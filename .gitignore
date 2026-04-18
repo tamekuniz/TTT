@@ -1,0 +1,13 @@
+# Swift / Xcode
+.DS_Store
+.build/
+Packages/
+Package.resolved
+*.xcodeproj
+*.xcworkspace
+xcuserdata/
+DerivedData/
+
+# App Specific
+recording.wav
+.ttt/models/
