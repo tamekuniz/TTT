@@ -33,7 +33,9 @@ class TTTCoordinator: ObservableObject {
             isProcessing = true
             
             let audioURL = FileManager.default.temporaryDirectory.appendingPathComponent("recording.wav")
-            let rawText = await whisper.transcribe(audioURL: audioURL)
+            
+            // 1. Whisper による文字起こし (素の状態)
+            var rawText = await whisper.transcribe(audioURL: audioURL)
             
             guard !rawText.isEmpty else {
                 statusMessage = "文字起こし失敗"
@@ -41,13 +43,26 @@ class TTTCoordinator: ObservableObject {
                 return
             }
             
+            // 2. AI に渡す前の「事前置換」
+            // 辞書の読みがあれば、AI に渡す前に正式名称に直して AI の精度を上げる
+            for entry in settings.dictionary where !entry.reading.isEmpty {
+                rawText = rawText.replacingOccurrences(of: entry.reading, with: entry.word)
+            }
+            
             statusMessage = "AI成形中 (\(network.isOnline ? "Groq" : "Bonsai"))..."
             
-            let processedText: String
+            // 3. AI による成形 (コンテキストは最小限)
+            var processedText: String
             if network.isOnline {
                 processedText = await groq.processText(rawText, apiKey: settings.groqApiKey, prompt: settings.systemPrompt)
             } else {
                 processedText = await bonsai.processText(rawText, prompt: settings.systemPrompt)
+            }
+            
+            // 4. AI 成形後の「事後置換」
+            // 万が一 AI が読みを復活させたり誤変換した場合に備えて、もう一度強制修正
+            for entry in settings.dictionary where !entry.reading.isEmpty {
+                processedText = processedText.replacingOccurrences(of: entry.reading, with: entry.word)
             }
             
             statusMessage = "テキスト入力中..."
@@ -63,56 +78,5 @@ class TTTCoordinator: ObservableObject {
                 statusMessage = "録音エラー: \(error.localizedDescription)"
             }
         }
-    }
-}
-
-@main
-struct TTTApp: App {
-    @StateObject private var coordinator = TTTCoordinator()
-    @Environment(\.openWindow) private var openWindow
-    
-    var body: some Scene {
-        // メインのメニューバーUI
-        MenuBarExtra {
-            Text("TTT (Talk to Type)")
-            Text("ステータス: \(coordinator.statusMessage)")
-            Divider()
-            
-            Button(coordinator.recorder.isRecording ? "録音停止" : "録音開始") {
-                Task { await coordinator.toggleRecording() }
-            }
-            .keyboardShortcut("V", modifiers: [.command, .option])
-            
-            if coordinator.isProcessing {
-                ProgressView("AI処理中...")
-                    .padding(.horizontal)
-            }
-            
-            Divider()
-            
-            Button("設定...") {
-                NSApp.activate(ignoringOtherApps: true)
-                openWindow(id: "settings")
-            }
-            
-            Button("終了") {
-                NSApplication.shared.terminate(nil)
-            }
-        } label: {
-            HStack {
-                Image(systemName: coordinator.recorder.isRecording ? "record.circle.fill" : (coordinator.isProcessing ? "cpu" : "waveform"))
-                if coordinator.recorder.isRecording {
-                    Text("REC")
-                } else {
-                    Text("TTT")
-                }
-            }
-        }
-        
-        // 設定ウィンドウの定義
-        Window("TTT 設定", id: "settings") {
-            SettingsView(settings: coordinator.settings, accessibility: coordinator.accessibility)
-        }
-        .windowResizability(.contentSize)
     }
 }

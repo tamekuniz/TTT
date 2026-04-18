@@ -32,7 +32,7 @@ class WhisperManager: ObservableObject {
         defer { isTranscribing = false }
         
         do {
-            // WhisperKit 0.18.0 では TranscriptionResult の配列が返ることがあるため、連結する
+            // WhisperKit 0.18.0 の仕様に合わせる
             let results = try await whisperKit.transcribe(audioPath: audioURL.path)
             let combinedText = results.compactMap { $0.text }.joined(separator: " ")
             lastTranscription = combinedText

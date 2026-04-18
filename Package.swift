@@ -22,10 +22,7 @@ let package = Package(
                 .product(name: "KeyboardShortcuts", package: "KeyboardShortcuts"),
                 .product(name: "MLX", package: "mlx-swift")
             ],
-            path: "Sources/TTT",
-            resources: [
-                .process("Resources/Info.plist")
-            ]
+            path: "Sources/TTT"
         )
     ]
 )
