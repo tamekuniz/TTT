@@ -10,9 +10,9 @@ let package = Package(
         .executable(name: "TTT", targets: ["TTT"])
     ],
     dependencies: [
-        .package(url: "https://github.com/argmaxinc/WhisperKit", from: "0.10.0"),
-        .package(url: "https://github.com/sindresorhus/KeyboardShortcuts", from: "2.2.0"),
-        .package(url: "https://github.com/ml-explore/mlx-swift", from: "0.10.0")
+        .package(url: "https://github.com/argmaxinc/WhisperKit", from: "0.18.0"),
+        .package(url: "https://github.com/sindresorhus/KeyboardShortcuts", from: "2.4.0"),
+        .package(url: "https://github.com/ml-explore/mlx-swift", from: "0.31.0")
     ],
     targets: [
         .executableTarget(
@@ -22,7 +22,10 @@ let package = Package(
                 .product(name: "KeyboardShortcuts", package: "KeyboardShortcuts"),
                 .product(name: "MLX", package: "mlx-swift")
             ],
-            path: "Sources/TTT"
+            path: "Sources/TTT",
+            resources: [
+                .process("Resources/Info.plist")
+            ]
         )
     ]
 )
