@@ -3,9 +3,8 @@ import Foundation
 @MainActor
 class GroqManager: ObservableObject {
     private let apiEndpoint = "https://api.groq.com/openai/v1/chat/completions"
-    @Published var apiKey: String = ""
     
-    func processText(_ text: String, prompt: String = "以下の文字起こしテキストを、自然な日本語に修正してください。不要なフィラーは削除し、文脈を整えてください。") async -> String {
+    func processText(_ text: String, apiKey: String, prompt: String) async -> String {
         guard !apiKey.isEmpty else { return text }
         
         let requestBody: [String: Any] = [
