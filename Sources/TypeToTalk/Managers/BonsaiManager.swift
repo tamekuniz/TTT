@@ -3,6 +3,7 @@ import Hub
 import MLXLLM
 import MLXLMCommon
 import Tokenizers
+import os
 
 enum BonsaiLoadState: Equatable {
     case idle
@@ -23,6 +24,7 @@ final class BonsaiManager: ObservableObject {
     private let downloader: any Downloader
     private let tokenizerLoader: any TokenizerLoader
     private let modelsBaseDirectory: URL
+    private let logger = Logger(subsystem: "com.tamekuniz.TypeToTalk", category: "Bonsai")
 
     init() {
         let baseDirectory = FileManager.default.homeDirectoryForCurrentUser
@@ -30,6 +32,7 @@ final class BonsaiManager: ObservableObject {
         self.modelsBaseDirectory = baseDirectory
         self.downloader = HuggingFaceHubDownloader(downloadBase: baseDirectory)
         self.tokenizerLoader = HuggingFaceTokenizerLoader()
+        logger.debug("init modelsBaseDirectory=\(baseDirectory.path, privacy: .public)")
     }
     
     func processText(_ text: String, prompt: String, modelID: String) async -> String {
@@ -104,17 +107,36 @@ final class BonsaiManager: ObservableObject {
 
     func ensureSelectedModelLoaded(modelID: String) async {
         currentSelectedModelID = modelID
-        guard canAutoLoad else { return }
+        logger.debug("ensureSelectedModelLoaded modelID=\(modelID, privacy: .public) canAutoLoad=\(self.canAutoLoad, privacy: .public) loadState=\(String(describing: self.loadState), privacy: .public)")
+        guard canAutoLoad else {
+            logger.debug("ensureSelectedModelLoaded: skipped (canAutoLoad=false)")
+            return
+        }
+        // 既に当該モデルがロード済みなら何もしない（重複ロード防止）。
+        if case let .loaded(loadedID) = loadState, loadedID == modelID {
+            logger.debug("ensureSelectedModelLoaded: skipped (already loaded modelID=\(modelID, privacy: .public))")
+            return
+        }
+        // ロード中なら多重起動を避ける（loadModel 側のフラグで二重実行は安全だが、
+        // ここで早期 return してログを明確にする）。
+        if case .loading = loadState {
+            logger.debug("ensureSelectedModelLoaded: skipped (already loading)")
+            return
+        }
         // 自動ロードはローカルにモデルが既にダウンロードされている場合のみ。
         // 未ダウンロードなら勝手にネットへ取りに行かず、状態は .idle のままサイレントに return。
         // 明示的な「再読込」は loadSelectedModel(modelID:) 経由で行うこと。
-        guard isLocalModelAvailable(modelID: modelID) else { return }
+        let available = isLocalModelAvailable(modelID: modelID)
+        logger.debug("ensureSelectedModelLoaded: isLocalModelAvailable=\(available, privacy: .public) modelID=\(modelID, privacy: .public)")
+        guard available else { return }
         do {
             _ = try await loadModel(modelID: modelID)
+            logger.debug("ensureSelectedModelLoaded: load success modelID=\(modelID, privacy: .public)")
         } catch {
             let message = error.localizedDescription
             loadState = .failed(message: message)
             statusMessage = "失敗: \(message)"
+            logger.error("ensureSelectedModelLoaded: load failed modelID=\(modelID, privacy: .public) error=\(message, privacy: .public)")
         }
     }
 
@@ -125,12 +147,20 @@ final class BonsaiManager: ObservableObject {
     private func isLocalModelAvailable(modelID: String) -> Bool {
         let modelDir = modelsBaseDirectory.appendingPathComponent(modelID)
         var isDir: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: modelDir.path, isDirectory: &isDir), isDir.boolValue else {
+        let exists = FileManager.default.fileExists(atPath: modelDir.path, isDirectory: &isDir)
+        guard exists, isDir.boolValue else {
+            logger.debug("isLocalModelAvailable: dir missing path=\(modelDir.path, privacy: .public) exists=\(exists, privacy: .public) isDir=\(isDir.boolValue, privacy: .public)")
             return false
         }
-        // 中途半端に作られた空ディレクトリへの防御
-        let contents = (try? FileManager.default.contentsOfDirectory(atPath: modelDir.path)) ?? []
-        return !contents.isEmpty
+        // 中途半端に作られた空ディレクトリへの防御。
+        // `.DS_Store` のみのケースも除外したいが、HuggingFaceHubDownloader が
+        // 配置するファイル名に依存して固定リストを書くと壊れやすいので、
+        // 「.で始まる隠しファイルを除いた数」で判定する。
+        let allContents = (try? FileManager.default.contentsOfDirectory(atPath: modelDir.path)) ?? []
+        let visibleContents = allContents.filter { !$0.hasPrefix(".") }
+        let hasContent = !visibleContents.isEmpty
+        logger.debug("isLocalModelAvailable: path=\(modelDir.path, privacy: .public) all=\(allContents.count, privacy: .public) visible=\(visibleContents.count, privacy: .public)")
+        return hasContent
     }
     
     func loadedContainer(for modelID: String) -> ModelContainer? {

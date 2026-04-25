@@ -1,6 +1,8 @@
 import AppKit
+import Combine
 import SwiftUI
 import KeyboardShortcuts
+import os
 
 extension KeyboardShortcuts.Name {
     static let triggerRecording = Self("triggerRecording")
@@ -83,7 +85,7 @@ struct TypeToTalkMainView: View {
                 modelStatusRow(
                     title: "Formatter",
                     detail: coordinator.activeFormatterDisplayName,
-                    status: coordinator.activeFormatterStatusText
+                    status: coordinator.formatterStatusText
                 )
                 Text("ショートカットで呼び出すと、このダイアログを前面に出します。")
                     .font(.caption)
@@ -196,12 +198,15 @@ class TypeToTalkCoordinator: ObservableObject {
     @Published var lastTriggerSource = "未検出"
     @Published var showAccessibilityPermissionAlert = false
     @Published private(set) var recordingURL: URL?
-    
+    @Published private(set) var formatterStatusText: String = "未読込"
+
     private var isTriggerShortcutPressed = false
     private var isRightOptionPressed = false
     private var startupLoadTask: Task<Void, Never>?
     private var globalFlagsMonitor: Any?
     private var localFlagsMonitor: Any?
+    private var cancellables = Set<AnyCancellable>()
+    private let logger = Logger(subsystem: "com.tamekuniz.TypeToTalk", category: "Coordinator")
     
     init() {
         let settings = SettingsManager()
@@ -209,18 +214,64 @@ class TypeToTalkCoordinator: ObservableObject {
         self.whisper = WhisperManager(settings: settings)
         self.bonsai.configureSelectedModel(settings.resolvedBonsaiModelID)
         setupRightOptionMonitor()
-        
+        setupFormatterStatusBindings()
+
         KeyboardShortcuts.onKeyDown(for: .triggerRecording) { [weak self] in
             Task { @MainActor in
                 await self?.handleTriggerShortcutDown()
             }
         }
-        
+
         KeyboardShortcuts.onKeyUp(for: .triggerRecording) { [weak self] in
             Task { @MainActor in
                 await self?.handleTriggerShortcutUp()
             }
         }
+
+        // 依存元の現在値で初期表示を確定する
+        refreshFormatterStatusText()
+    }
+
+    /// formatterStatusText を活性 provider と依存元の状態から計算して @Published に反映する。
+    /// View 再評価のトリガを「Coordinator の @Published 変化」に揃えるため、計算結果は必ず
+    /// プロパティ代入経由で公開する（計算型プロパティで包むと objectWillChange が発火せず、
+    /// メインウインドウへ伝播しない）。
+    private func refreshFormatterStatusText() {
+        let newValue: String
+        switch activeFormatterProvider {
+        case .groq, .openAI:
+            newValue = network.isOnline ? "準備完了" : "未接続"
+        case .bonsai:
+            newValue = bonsai.statusMessage
+        }
+        if formatterStatusText != newValue {
+            formatterStatusText = newValue
+        }
+    }
+
+    /// formatterStatusText の依存元（bonsai.statusMessage / network.isOnline /
+    /// settings の formatter / Bonsai modelID 関連）を Combine で購読し、
+    /// 変化があるたびに refreshFormatterStatusText() を呼ぶ。
+    private func setupFormatterStatusBindings() {
+        bonsai.$statusMessage
+            .sink { [weak self] _ in self?.refreshFormatterStatusText() }
+            .store(in: &cancellables)
+
+        network.$isOnline
+            .sink { [weak self] _ in self?.refreshFormatterStatusText() }
+            .store(in: &cancellables)
+
+        settings.$formatterProviderRawValue
+            .sink { [weak self] _ in self?.refreshFormatterStatusText() }
+            .store(in: &cancellables)
+
+        settings.$bonsaiModelPresetRawValue
+            .sink { [weak self] _ in self?.refreshFormatterStatusText() }
+            .store(in: &cancellables)
+
+        settings.$bonsaiCustomModelID
+            .sink { [weak self] _ in self?.refreshFormatterStatusText() }
+            .store(in: &cancellables)
     }
 
     func handleAppLaunch() {
@@ -399,15 +450,6 @@ class TypeToTalkCoordinator: ObservableObject {
         }
     }
     
-    var activeFormatterStatusText: String {
-        switch activeFormatterProvider {
-        case .groq, .openAI:
-            return network.isOnline ? "準備完了" : "未接続"
-        case .bonsai:
-            return bonsai.statusMessage
-        }
-    }
-
     var isFormatterLoading: Bool {
         activeFormatterProvider == .bonsai && bonsai.isLoadingModel
     }
@@ -445,11 +487,21 @@ class TypeToTalkCoordinator: ObservableObject {
     }
 
     func synchronizeModelsForCurrentSettings() async {
-        await whisper.ensureSelectedModelLoaded()
-        bonsai.configureSelectedModel(settings.resolvedBonsaiModelID)
+        let bonsaiModelID = settings.resolvedBonsaiModelID
+        let provider = activeFormatterProvider
+        logger.debug("synchronizeModels: provider=\(String(describing: provider), privacy: .public) bonsaiModelID=\(bonsaiModelID, privacy: .public)")
 
-        guard activeFormatterProvider == .bonsai else { return }
-        await bonsai.ensureSelectedModelLoaded(modelID: settings.resolvedBonsaiModelID)
+        await whisper.ensureSelectedModelLoaded()
+        bonsai.configureSelectedModel(bonsaiModelID)
+
+        guard provider == .bonsai else {
+            logger.debug("synchronizeModels: skip Bonsai autoload (provider != .bonsai)")
+            return
+        }
+        await bonsai.ensureSelectedModelLoaded(modelID: bonsaiModelID)
+        // 自動ロード結果は loadState/statusMessage 経由で sink され、
+        // formatterStatusText に反映される（refreshFormatterStatusText）。
+        refreshFormatterStatusText()
     }
     
     private func processText(_ text: String, with provider: FormatterProvider) async -> String {
