@@ -49,8 +49,14 @@ struct TypeToTalkMainView: View {
                         .fill(micButtonColor)
                         .frame(width: 88, height: 88)
                         .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
-                        .scaleEffect(coordinator.recorder.isRecording && isPulsing ? 1.08 : 1.0)
-                        .opacity(coordinator.recorder.isRecording && isPulsing ? 0.85 : 1.0)
+                        .scaleEffect(isPulsing ? 1.08 : 1.0)
+                        .opacity(isPulsing ? 0.85 : 1.0)
+                        .animation(
+                            coordinator.recorder.isRecording
+                                ? .easeInOut(duration: 0.8).repeatForever(autoreverses: true)
+                                : .easeInOut(duration: 0.2),
+                            value: isPulsing
+                        )
                     if coordinator.isProcessing {
                         ProgressView()
                             .progressViewStyle(.circular)
@@ -68,15 +74,7 @@ struct TypeToTalkMainView: View {
             .disabled(coordinator.isProcessing)
             .help("録音開始 / 停止")
             .onChange(of: coordinator.recorder.isRecording) { _, recording in
-                if recording {
-                    withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
-                        isPulsing = true
-                    }
-                } else {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        isPulsing = false
-                    }
-                }
+                isPulsing = recording
             }
             
             VStack(spacing: 10) {
