@@ -29,6 +29,43 @@ class WhisperManager: ObservableObject {
         didSet { refreshStatusText() }
     }
 
+    /// Whisper が無音区間で生成しがちな hallucination 文字列のホワイトリスト。
+    /// 完全一致（前後 whitespace は trim 済みで比較）で除去する。
+    /// 部分一致や正規表現は使わない（誤削除リスク回避）。
+    /// 多言語対応する際は言語別に辞書化する余地あり。
+    private static let hallucinationPatterns: Set<String> = [
+        // Japanese (YouTube/動画字幕由来の典型句)
+        "ご視聴ありがとうございました",
+        "ご視聴ありがとうございました。",
+        "ありがとうございました",
+        "ありがとうございました。",
+        "お疲れ様でした",
+        "お疲れ様でした。",
+        "字幕作成: ",
+        "[音楽]",
+        "[拍手]",
+        "ご清聴ありがとうございました",
+        // English
+        "Thank you for watching.",
+        "Thanks for watching.",
+        "Thank you.",
+        "[BLANK_AUDIO]",
+        "[Music]",
+        "[Applause]",
+        "Subtitles by the Amara.org community",
+        "♪",
+    ]
+
+    /// hallucination 文字列の完全一致を除去する。
+    /// 前後 whitespace は除いてから比較。マッチしたら空文字を返す。
+    private func filterHallucinations(_ text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if Self.hallucinationPatterns.contains(trimmed) {
+            return ""
+        }
+        return text
+    }
+
     init(settings: SettingsManager) {
         self.settings = settings
         refreshStatusText()
@@ -122,7 +159,20 @@ class WhisperManager: ObservableObject {
         do {
             let modelPath = try await WhisperKit.download(variant: selectedModelID)
             loadingStatusText = "モデル読込中..."
-            let kit = try await WhisperKit(model: selectedModelID, modelFolder: modelPath.path)
+            // hallucination 対策 (層 1): WhisperKitConfig 経由で EnergyVAD を仕込む。
+            // EnergyVAD はデフォルト energyThreshold = 0.02。低音量問題が出たら 0.01 に下げる。
+            let vad = EnergyVAD(
+                sampleRate: WhisperKit.sampleRate,
+                frameLength: 0.1,
+                frameOverlap: 0.0,
+                energyThreshold: 0.02
+            )
+            let config = WhisperKitConfig(
+                model: selectedModelID,
+                modelFolder: modelPath.path,
+                voiceActivityDetector: vad
+            )
+            let kit = try await WhisperKit(config)
             self.whisperKit = kit
             self.loadedModelID = selectedModelID
             self.loadState = .loaded(modelID: selectedModelID)
@@ -154,10 +204,17 @@ class WhisperManager: ObservableObject {
 
         let decodeOptions: DecodingOptions
         if language == "auto" {
-            // language 未指定 + detectLanguage 明示で WhisperKit 内部の自動検出に委ねる
-            decodeOptions = DecodingOptions(detectLanguage: true)
+            // language 未指定 + detectLanguage 明示で WhisperKit 内部の自動検出に委ねる。
+            // hallucination 対策 (層 3 Stage 1): noSpeechThreshold をデフォルト 0.6 → 0.4 に厳格化。
+            decodeOptions = DecodingOptions(
+                detectLanguage: true,
+                noSpeechThreshold: 0.4
+            )
         } else {
-            decodeOptions = DecodingOptions(language: language)
+            decodeOptions = DecodingOptions(
+                language: language,
+                noSpeechThreshold: 0.4
+            )
         }
 
         do {
@@ -167,8 +224,10 @@ class WhisperManager: ObservableObject {
                 decodeOptions: decodeOptions
             )
             let combinedText = results.compactMap { $0.text }.joined(separator: " ")
-            lastTranscription = combinedText
-            return combinedText
+            // hallucination 対策 (層 2): 既知 hallucination 文字列の完全一致除去。
+            let filtered = filterHallucinations(combinedText)
+            lastTranscription = filtered
+            return filtered
         } catch {
             print("Transcription failed: \(error)")
             return ""
