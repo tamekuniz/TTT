@@ -124,6 +124,7 @@ class TypeToTalkCoordinator: ObservableObject {
     func toggleRecording() async {
         if recorder.isRecording {
             recorder.stopRecording()
+            playFeedbackSound(named: "Pop")
             performHapticFeedback(.levelChange)
             statusMessage = "文字起こし中..."
             isProcessing = true
@@ -196,6 +197,7 @@ class TypeToTalkCoordinator: ObservableObject {
             do {
                 await synchronizeModelsForCurrentSettings()
                 recordingURL = try await recorder.startRecording()
+                playFeedbackSound(named: "Tink")
                 performHapticFeedback(.generic)
                 statusMessage = "録音中..."
                 currentStatus = .recording
@@ -274,6 +276,14 @@ class TypeToTalkCoordinator: ObservableObject {
 
     private func performHapticFeedback(_ pattern: NSHapticFeedbackManager.FeedbackPattern) {
         NSHapticFeedbackManager.defaultPerformer.perform(pattern, performanceTime: .now)
+    }
+
+    /// 録音開始/停止時のフィードバック音を鳴らす。
+    /// `settings.soundFeedbackEnabled` が false の場合は何もしない。
+    /// 名前は `NSSound(named:)` で解決可能なシステム音名（"Tink", "Pop" など）。
+    private func playFeedbackSound(named name: String) {
+        guard settings.soundFeedbackEnabled else { return }
+        NSSound(named: name)?.play()
     }
 
     private var activeFormatterProvider: FormatterProvider {

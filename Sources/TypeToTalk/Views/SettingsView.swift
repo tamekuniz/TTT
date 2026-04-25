@@ -244,8 +244,14 @@ struct SettingsView: View {
                             }
                             .labelsHidden()
                         }
-                        
-                        Text("任意のショートカットに加えて、右 Option 単体でも録音を制御できます。トグルは押すたび開始/停止、プッシュトークは押している間だけ録音します。")
+
+                        settingRow("フィードバック音") {
+                            Toggle("", isOn: $settings.soundFeedbackEnabled)
+                                .labelsHidden()
+                                .toggleStyle(.switch)
+                        }
+
+                        Text("任意のショートカットに加えて、右 Option 単体でも録音を制御できます。トグルは押すたび開始/停止、プッシュトークは押している間だけ録音します。フィードバック音 ON で録音開始時に Tink、停止時に Pop が鳴ります（触覚フィードバックは常時有効）。")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }

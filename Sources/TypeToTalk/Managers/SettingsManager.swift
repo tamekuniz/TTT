@@ -207,6 +207,12 @@ class SettingsManager: ObservableObject {
         didSet { UserDefaults.standard.set(promptMode, forKey: "promptMode") }
     }
 
+    /// 録音開始/停止時のフィードバック音 ON/OFF。デフォルト ON（true）。
+    /// OFF 時は触覚フィードバックのみ発火し、システム音（Tink/Pop）は鳴らさない。
+    @Published var soundFeedbackEnabled: Bool {
+        didSet { UserDefaults.standard.set(soundFeedbackEnabled, forKey: "soundFeedbackEnabled") }
+    }
+
     @Published var dictionary: [DictionaryEntry] {
         didSet {
             if let encoded = try? JSONEncoder().encode(dictionary) {
@@ -235,6 +241,14 @@ class SettingsManager: ObservableObject {
         self.formatterLanguage = UserDefaults.standard.string(forKey: "formatterLanguage") ?? "ja"
         self.textStyle = UserDefaults.standard.string(forKey: "textStyle") ?? "auto"
         self.promptMode = UserDefaults.standard.string(forKey: "promptMode") ?? "custom"
+
+        // soundFeedbackEnabled: 未設定時は true（デフォルト ON）
+        // bool(forKey:) は未設定で false を返すため、object(forKey:) で存在チェックする
+        if UserDefaults.standard.object(forKey: "soundFeedbackEnabled") != nil {
+            self.soundFeedbackEnabled = UserDefaults.standard.bool(forKey: "soundFeedbackEnabled")
+        } else {
+            self.soundFeedbackEnabled = true
+        }
 
         if let data = UserDefaults.standard.data(forKey: "userDictionary"),
            let decoded = try? JSONDecoder().decode([DictionaryEntry].self, from: data) {
