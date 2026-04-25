@@ -87,10 +87,6 @@ struct TypeToTalkMainView: View {
                     detail: coordinator.activeFormatterDisplayName,
                     status: coordinator.formatterStatusText
                 )
-                Text("ショートカットで呼び出すと、このダイアログを前面に出します。")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
             }
         }
         .padding(20)
