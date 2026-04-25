@@ -8,179 +8,18 @@ extension KeyboardShortcuts.Name {
     static let triggerRecording = Self("triggerRecording")
 }
 
-struct TypeToTalkMainView: View {
-    @ObservedObject var coordinator: TypeToTalkCoordinator
-    @State private var isPulsing = false
-
-    var body: some View {
-        VStack(spacing: 18) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 6) {
-                    if !coordinator.statusMessage.isEmpty {
-                        Text(coordinator.statusMessage)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                Spacer()
-
-                SettingsLink {
-                    Image(systemName: "gearshape")
-                        .font(.title3)
-                        .foregroundStyle(.secondary)
-                        .frame(width: 32, height: 32)
-                        .background(Circle().fill(Color.gray.opacity(0.12)))
-                }
-                .buttonStyle(.plain)
-                .help("設定を開く")
-                .contentShape(Circle())
-            }
-            .padding(.leading, 56)
-            
-            Button {
-                Task {
-                    await coordinator.toggleRecording()
-                }
-            } label: {
-                ZStack {
-                    Circle()
-                        .fill(micButtonColor)
-                        .frame(width: 88, height: 88)
-                        .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
-                        .scaleEffect(isPulsing ? 1.08 : 1.0)
-                        .opacity(isPulsing ? 0.85 : 1.0)
-                        .animation(
-                            coordinator.recorder.isRecording
-                                ? .easeInOut(duration: 0.8).repeatForever(autoreverses: true)
-                                : .easeInOut(duration: 0.2),
-                            value: isPulsing
-                        )
-                    if coordinator.isProcessing {
-                        ProgressView()
-                            .progressViewStyle(.circular)
-                            .tint(.white)
-                            .scaleEffect(1.2)
-                    } else {
-                        Image(systemName: "mic.fill")
-                            .font(.system(size: 30, weight: .semibold))
-                            .foregroundStyle(.white)
-                    }
-                }
-                .contentShape(Circle())
-            }
-            .buttonStyle(.plain)
-            .disabled(coordinator.isProcessing)
-            .help("録音開始 / 停止")
-            .onChange(of: coordinator.recorder.isRecording) { _, recording in
-                isPulsing = recording
-            }
-            
-            VStack(spacing: 10) {
-                modelStatusRow(
-                    title: "Whisper",
-                    detail: coordinator.settings.whisperDisplayName,
-                    status: coordinator.whisper.statusText
-                )
-                modelStatusRow(
-                    title: "Formatter",
-                    detail: coordinator.activeFormatterDisplayName,
-                    status: coordinator.formatterStatusText
-                )
-            }
-        }
-        .padding(20)
-        .frame(width: 360, height: 300)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .padding(10)
-        .alert("アクセシビリティ権限が必要です", isPresented: $coordinator.showAccessibilityPermissionAlert) {
-            Button("システム設定を開く") {
-                coordinator.accessibility.openAccessibilitySettings()
-            }
-            Button("キャンセル", role: .cancel) { }
-        } message: {
-            Text("TypeToTalk が文字起こし結果をフォーカス中の入力欄に書き込むには、アクセシビリティ権限が必要です。\n\nシステム設定 → プライバシーとセキュリティ → アクセシビリティ で TypeToTalk を有効にしてください。\n\n権限を有効化したあと TypeToTalk に戻ると自動で再チェックされます。反映されない場合は設定画面の「アプリを再起動」を押してください。")
-        }
-    }
-
-    private var micButtonColor: Color {
-        if coordinator.recorder.isRecording {
-            return Color(red: 0.05, green: 0.35, blue: 0.80)
-        }
-
-        if coordinator.whisper.whisperKit != nil {
-            return Color(red: 0.10, green: 0.47, blue: 0.95)
-        }
-
-        return Color(red: 0.45, green: 0.83, blue: 0.98)
-    }
-    
-    private func modelStatusRow(
-        title: String,
-        detail: String,
-        status: String
-    ) -> some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text(detail)
-                    .font(.subheadline)
-            }
-
-            Spacer()
-
-            VStack(alignment: .trailing, spacing: 6) {
-                statusBadge(status)
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.white.opacity(0.6))
-        )
-    }
-
-    private func statusBadge(_ value: String) -> some View {
-        HStack(spacing: 8) {
-            Circle()
-                .fill(statusColor(for: value))
-                .frame(width: 8, height: 8)
-            Text(value)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.primary)
-        }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 5)
-        .background(
-            Capsule(style: .continuous)
-                .fill(Color.black.opacity(0.05))
-        )
-        .allowsHitTesting(false)
-        .accessibilityAddTraits(.isStaticText)
-    }
-
-    private func statusColor(for value: String) -> Color {
-        if value.contains("準備完了") || value.contains("完了") {
-            return Color(red: 0.18, green: 0.67, blue: 0.37)
-        }
-
-        if value.contains("読込中") || value.contains("録音中") {
-            return Color(red: 0.95, green: 0.64, blue: 0.16)
-        }
-
-        if value.contains("失敗") || value.contains("未接続") || value.contains("未読込") {
-            return Color(red: 0.77, green: 0.42, blue: 0.18)
-        }
-
-        return Color.secondary.opacity(0.7)
-    }
-}
-
 @MainActor
 class TypeToTalkCoordinator: ObservableObject {
+    /// メニューバー UI 用のアプリ全体ステータス。
+    /// Phase 1 では値を保持・更新するだけ（アイコン側はまだ静的）。
+    /// Phase 2 で `MenuBarLabel` 側がこの値に追従してアイコンを切替える。
+    enum AppStatus: Equatable {
+        case idle
+        case recording
+        case processing
+        case error(String)
+    }
+
     @Published var recorder = AudioRecorder()
     @Published var whisper: WhisperManager
     @Published var formatter = OpenAICompatibleManager()
@@ -188,13 +27,17 @@ class TypeToTalkCoordinator: ObservableObject {
     @Published var accessibility = AccessibilityManager()
     @Published var network = NetworkManager()
     @Published var settings: SettingsManager
-    
+
     @Published var statusMessage = ""
     @Published var isProcessing = false
     @Published var lastTriggerSource = "未検出"
     @Published var showAccessibilityPermissionAlert = false
     @Published private(set) var recordingURL: URL?
     @Published private(set) var formatterStatusText: String = "未読込"
+
+    /// Phase 1 で追加。MenuBarExtra 用のステータス。
+    /// 既存の `statusMessage` 文字列とは別系統で並行運用する。
+    @Published var currentStatus: AppStatus = .idle
 
     private var isTriggerShortcutPressed = false
     private var isRightOptionPressed = false
@@ -203,7 +46,7 @@ class TypeToTalkCoordinator: ObservableObject {
     private var localFlagsMonitor: Any?
     private var cancellables = Set<AnyCancellable>()
     private let logger = Logger(subsystem: "com.tamekuniz.TypeToTalk", category: "Coordinator")
-    
+
     init() {
         let settings = SettingsManager()
         self.settings = settings
@@ -274,6 +117,7 @@ class TypeToTalkCoordinator: ObservableObject {
         startupLoadTask?.cancel()
         startupLoadTask = Task { @MainActor [weak self] in
             await self?.synchronizeModelsForCurrentSettings()
+            self?.currentStatus = .idle
         }
     }
 
@@ -283,61 +127,69 @@ class TypeToTalkCoordinator: ObservableObject {
             performHapticFeedback(.levelChange)
             statusMessage = "文字起こし中..."
             isProcessing = true
+            currentStatus = .processing
 
             guard let audioURL = recordingURL else {
                 statusMessage = "録音ファイルが見つかりません"
                 isProcessing = false
+                currentStatus = .error("録音ファイルが見つかりません")
                 return
             }
 
             guard whisper.whisperKit != nil else {
                 statusMessage = "聞き取りモデルを読み込んでください"
                 isProcessing = false
+                currentStatus = .error("聞き取りモデル未読込")
                 return
             }
-            
+
             // 1. Whisper による文字起こし (素の状態)
             var rawText = await whisper.transcribe(
                 audioURL: audioURL,
                 language: settings.whisperLanguage
             )
-            
+
             guard !rawText.isEmpty else {
                 statusMessage = "文字起こし失敗"
                 isProcessing = false
+                currentStatus = .error("文字起こし失敗")
                 return
             }
-            
+
             // 2. AI に渡す前の「事前置換」
             // 辞書の読みがあれば、AI に渡す前に正式名称に直して AI の精度を上げる
             for entry in settings.dictionary where !entry.reading.isEmpty {
                 rawText = rawText.replacingOccurrences(of: entry.reading, with: entry.word)
             }
-            
+
             // 3. AI による成形 (コンテキストは最小限)
             let activeFormatter = activeFormatterProvider
             statusMessage = "AI成形中 (\(activeFormatterDisplayName))..."
             let processedText = await processText(rawText, with: activeFormatter)
-            
+
             // 4. AI 成形後の「事後置換」
             // 万が一 AI が読みを復活させたり誤変換した場合に備えて、もう一度強制修正
             var finalText = processedText
             for entry in settings.dictionary where !entry.reading.isEmpty {
                 finalText = finalText.replacingOccurrences(of: entry.reading, with: entry.word)
             }
-            
+
             statusMessage = "テキスト入力中..."
             switch accessibility.insertText(finalText) {
             case .success:
                 statusMessage = "完了"
                 performHapticFeedback(.alignment)
+                currentStatus = .idle
             case .missingPermission:
                 statusMessage = "アクセシビリティ権限が必要です（テキスト入力に必要）"
                 showAccessibilityPermissionAlert = true
+                currentStatus = .error("アクセシビリティ権限なし")
             case .noFocusedElement:
                 statusMessage = "入力先が見つかりません"
+                currentStatus = .error("入力先なし")
             case .unsupportedTarget:
                 statusMessage = "この入力欄には書き込めません"
+                currentStatus = .error("書込不可")
             }
             isProcessing = false
         } else {
@@ -346,12 +198,14 @@ class TypeToTalkCoordinator: ObservableObject {
                 recordingURL = try await recorder.startRecording()
                 performHapticFeedback(.generic)
                 statusMessage = "録音中..."
+                currentStatus = .recording
             } catch {
                 statusMessage = "録音エラー: \(error.localizedDescription)"
+                currentStatus = .error("録音エラー")
             }
         }
     }
-    
+
     private func handleTriggerShortcutDown() async {
         guard !isTriggerShortcutPressed else { return }
         isTriggerShortcutPressed = true
@@ -361,27 +215,21 @@ class TypeToTalkCoordinator: ObservableObject {
         case .disabled:
             break
         case .toggle:
-            // 録音中でないときは、ウインドウを必ず手前に出してから録音開始。
-            // 録音中のときは停止のみ（ウインドウは閉じない）。
-            if !recorder.isRecording {
-                showRecorderWindow()
-            }
             await toggleRecording()
         case .pushToTalk:
             if !recorder.isRecording && !isProcessing {
-                showRecorderWindow()
                 await toggleRecording()
             }
         }
     }
-    
+
     private func handleTriggerShortcutUp() async {
         guard isTriggerShortcutPressed else { return }
         isTriggerShortcutPressed = false
-        
+
         guard settings.shortcutTriggerMode == .pushToTalk else { return }
         guard recorder.isRecording else { return }
-        
+
         await toggleRecording()
     }
 
@@ -427,7 +275,7 @@ class TypeToTalkCoordinator: ObservableObject {
     private func performHapticFeedback(_ pattern: NSHapticFeedbackManager.FeedbackPattern) {
         NSHapticFeedbackManager.defaultPerformer.perform(pattern, performanceTime: .now)
     }
-    
+
     private var activeFormatterProvider: FormatterProvider {
         let selected = settings.formatterProvider
         if selected.requiresNetwork && !network.isOnline {
@@ -435,7 +283,7 @@ class TypeToTalkCoordinator: ObservableObject {
         }
         return selected
     }
-    
+
     var activeFormatterDisplayName: String {
         let provider = activeFormatterProvider
         switch provider {
@@ -445,21 +293,9 @@ class TypeToTalkCoordinator: ObservableObject {
             return settings.bonsaiDisplayName
         }
     }
-    
+
     var isFormatterLoading: Bool {
         activeFormatterProvider == .bonsai && bonsai.isLoadingModel
-    }
-    
-    func showRecorderWindow() {
-        NSApplication.shared.setActivationPolicy(.regular)
-        NSApplication.shared.activate(ignoringOtherApps: true)
-        for window in NSApplication.shared.windows {
-            if window.identifier?.rawValue == "RecorderWindow" {
-                window.makeKeyAndOrderFront(nil)
-                return
-            }
-        }
-        NSApplication.shared.windows.first?.makeKeyAndOrderFront(nil)
     }
 
     /// アプリを再起動する。新しいプロセスを openApplication で起動してから自身を terminate する。
@@ -499,7 +335,7 @@ class TypeToTalkCoordinator: ObservableObject {
         // formatterStatusText に反映される（refreshFormatterStatusText）。
         refreshFormatterStatusText()
     }
-    
+
     private func processText(_ text: String, with provider: FormatterProvider) async -> String {
         let prompt: String
         if settings.promptMode == "preset" {
@@ -540,41 +376,66 @@ class TypeToTalkCoordinator: ObservableObject {
     }
 }
 
+/// MenuBarExtra の label 部分。
+/// Phase 1 では SF Symbol 固定（`mic.circle`）。
+/// 旧 `WindowGroup { TypeToTalkMainView ... .onAppear / .onChange(...) }` で行っていた
+/// 起動時セットアップと Combine 的な再構成トリガを、ここに移植する。
+/// （Settings ウインドウは独立した Scene なので、起動直後は表示されない。
+///   MenuBarExtra の label は起動時に必ず一度描画されるため、そこを起動フックとして使う。）
+struct MenuBarLabel: View {
+    @ObservedObject var coordinator: TypeToTalkCoordinator
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var didLaunch = false
+
+    var body: some View {
+        Image(systemName: "mic.circle")
+            .onAppear {
+                if !didLaunch {
+                    didLaunch = true
+                    coordinator.handleAppLaunch()
+                }
+            }
+            .onChange(of: coordinator.settings.formatterProviderRawValue) { _, _ in
+                coordinator.bonsai.configureSelectedModel(coordinator.settings.resolvedBonsaiModelID)
+            }
+            .onChange(of: coordinator.settings.bonsaiModelPresetRawValue) { _, _ in
+                coordinator.bonsai.configureSelectedModel(coordinator.settings.resolvedBonsaiModelID)
+            }
+            .onChange(of: coordinator.settings.bonsaiCustomModelID) { _, _ in
+                coordinator.bonsai.configureSelectedModel(coordinator.settings.resolvedBonsaiModelID)
+            }
+            .onChange(of: scenePhase) { _, newPhase in
+                // フォアグラウンド復帰時に権限状態を最新化（システム設定で変更後の反映）
+                if newPhase == .active {
+                    coordinator.accessibility.refreshPermissionStatus()
+                }
+            }
+    }
+}
+
 @main
 struct TypeToTalkApp: App {
     @StateObject private var coordinator = TypeToTalkCoordinator()
-    @Environment(\.scenePhase) private var scenePhase
+
+    init() {
+        // メニューバー常駐型（Dock 非表示）。Scene 構成より前に確定させる。
+        NSApplication.shared.setActivationPolicy(.accessory)
+    }
 
     var body: some Scene {
-        WindowGroup {
-            TypeToTalkMainView(coordinator: coordinator)
-                .onAppear {
-                    NSApplication.shared.setActivationPolicy(.regular)
-                    NSApplication.shared.activate(ignoringOtherApps: true)
-                    if let window = NSApplication.shared.windows.first {
-                        window.identifier = NSUserInterfaceItemIdentifier("RecorderWindow")
-                        window.title = "TypeToTalk"
-                    }
-                    coordinator.handleAppLaunch()
-                }
-                .onChange(of: coordinator.settings.formatterProviderRawValue) { _, _ in
-                    coordinator.bonsai.configureSelectedModel(coordinator.settings.resolvedBonsaiModelID)
-                }
-                .onChange(of: coordinator.settings.bonsaiModelPresetRawValue) { _, _ in
-                    coordinator.bonsai.configureSelectedModel(coordinator.settings.resolvedBonsaiModelID)
-                }
-                .onChange(of: coordinator.settings.bonsaiCustomModelID) { _, _ in
-                    coordinator.bonsai.configureSelectedModel(coordinator.settings.resolvedBonsaiModelID)
-                }
-                .onChange(of: scenePhase) { _, newPhase in
-                    // フォアグラウンド復帰時に権限状態を最新化（システム設定で変更後の反映）
-                    if newPhase == .active {
-                        coordinator.accessibility.refreshPermissionStatus()
-                    }
-                }
+        MenuBarExtra {
+            SettingsLink {
+                Text("設定...")
+            }
+            Divider()
+            Button("TypeToTalk を終了") {
+                NSApplication.shared.terminate(nil)
+            }
+        } label: {
+            MenuBarLabel(coordinator: coordinator)
         }
-        .windowResizability(.contentSize)
-        
+        .menuBarExtraStyle(.menu)
+
         Settings {
             SettingsView(
                 settings: coordinator.settings,
