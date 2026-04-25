@@ -251,8 +251,8 @@ struct SettingsView: View {
                 }
                 
                 GroupBox {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(alignment: .top) {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text("アクセシビリティ権限")
                                 Text("TypeToTalk が文字起こし結果をフォーカス中の入力欄に直接書き込むために必要です。")
@@ -262,18 +262,35 @@ struct SettingsView: View {
 
                             Spacer()
 
-                            Image(systemName: accessibility.hasPermission ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                                .foregroundStyle(accessibility.hasPermission ? .green : .orange)
-                            Button(accessibility.hasPermission ? "許可済み" : "設定を開く") {
-                                if !accessibility.hasPermission {
-                                    accessibility.requestPermission()
-                                    accessibility.openAccessibilitySettings()
-                                }
+                            HStack(spacing: 6) {
+                                Circle()
+                                    .fill(accessibility.hasPermission ? Color.green : Color.red)
+                                    .frame(width: 8, height: 8)
+                                Text(accessibility.hasPermission ? "許可済み" : "未許可")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
                             }
-                            .disabled(accessibility.hasPermission)
                         }
 
-                        Text("「設定を開く」を押すと、システム設定 → プライバシーとセキュリティ → アクセシビリティ が直接開きます。一覧で TypeToTalk を有効にしてください。許可されると録音停止後にテキストが自動入力されます。")
+                        HStack(spacing: 8) {
+                            Button("システム設定を開く") {
+                                // 初回プロンプト未表示の状態（hasPermission=false かつ過去に
+                                // requestPermission を呼んでいない場合）に限り、prompt付きで
+                                // 一度だけ表示。連打しても以降は openAccessibilitySettings のみ呼ぶ。
+                                if !accessibility.hasPermission {
+                                    accessibility.requestPermission()
+                                }
+                                accessibility.openAccessibilitySettings()
+                            }
+
+                            Button("権限を再チェック") {
+                                accessibility.refreshPermissionStatus()
+                            }
+
+                            Spacer()
+                        }
+
+                        Text("「システム設定を開く」を押すと、システム設定 → プライバシーとセキュリティ → アクセシビリティ が直接開きます。一覧で TypeToTalk を有効にしたあと、本アプリへ戻ると自動で再チェックされます。反映されない場合は「権限を再チェック」を押してください。")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)

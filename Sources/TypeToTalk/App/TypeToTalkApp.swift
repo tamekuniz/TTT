@@ -9,7 +9,8 @@ extension KeyboardShortcuts.Name {
 
 struct TypeToTalkMainView: View {
     @ObservedObject var coordinator: TypeToTalkCoordinator
-    
+    @State private var isPulsing = false
+
     var body: some View {
         VStack(spacing: 18) {
             HStack(alignment: .top) {
@@ -28,8 +29,13 @@ struct TypeToTalkMainView: View {
                 SettingsLink {
                     Image(systemName: "gearshape")
                         .font(.title3)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 32, height: 32)
+                        .background(Circle().fill(Color.gray.opacity(0.12)))
                 }
                 .buttonStyle(.plain)
+                .help("設定を開く")
+                .contentShape(Circle())
             }
             .padding(.leading, 56)
             
@@ -42,13 +48,36 @@ struct TypeToTalkMainView: View {
                     Circle()
                         .fill(micButtonColor)
                         .frame(width: 88, height: 88)
-                    Image(systemName: coordinator.recorder.isRecording ? "stop.fill" : "mic.fill")
-                        .font(.system(size: 30, weight: .semibold))
-                        .foregroundStyle(.white)
+                        .shadow(color: .black.opacity(0.15), radius: 4, y: 2)
+                        .scaleEffect(coordinator.recorder.isRecording && isPulsing ? 1.08 : 1.0)
+                        .opacity(coordinator.recorder.isRecording && isPulsing ? 0.85 : 1.0)
+                    if coordinator.isProcessing {
+                        ProgressView()
+                            .progressViewStyle(.circular)
+                            .tint(.white)
+                            .scaleEffect(1.2)
+                    } else {
+                        Image(systemName: coordinator.recorder.isRecording ? "stop.fill" : "mic.fill")
+                            .font(.system(size: 30, weight: .semibold))
+                            .foregroundStyle(.white)
+                    }
                 }
+                .contentShape(Circle())
             }
             .buttonStyle(.plain)
             .disabled(coordinator.isProcessing)
+            .help("録音開始 / 停止")
+            .onChange(of: coordinator.recorder.isRecording) { _, recording in
+                if recording {
+                    withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) {
+                        isPulsing = true
+                    }
+                } else {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        isPulsing = false
+                    }
+                }
+            }
             
             VStack(spacing: 10) {
                 modelStatusRow(
@@ -77,7 +106,7 @@ struct TypeToTalkMainView: View {
             }
             Button("キャンセル", role: .cancel) { }
         } message: {
-            Text("TypeToTalk が文字起こし結果をフォーカス中の入力欄に書き込むには、アクセシビリティ権限が必要です。\n\nシステム設定 → プライバシーとセキュリティ → アクセシビリティ で TypeToTalk を有効にしてください。")
+            Text("TypeToTalk が文字起こし結果をフォーカス中の入力欄に書き込むには、アクセシビリティ権限が必要です。\n\nシステム設定 → プライバシーとセキュリティ → アクセシビリティ で TypeToTalk を有効にしてください。\n\n権限を有効化したあと TypeToTalk に戻ると自動で再チェックされます。反映されない場合は設定画面の「権限を再チェック」を押してください。")
         }
     }
 
@@ -136,6 +165,8 @@ struct TypeToTalkMainView: View {
             Capsule(style: .continuous)
                 .fill(Color.black.opacity(0.05))
         )
+        .allowsHitTesting(false)
+        .accessibilityAddTraits(.isStaticText)
     }
 
     private func statusColor(for value: String) -> Color {
@@ -213,6 +244,7 @@ class TypeToTalkCoordinator: ObservableObject {
     func toggleRecording() async {
         if recorder.isRecording {
             recorder.stopRecording()
+            performHapticFeedback(.levelChange)
             statusMessage = "文字起こし中..."
             isProcessing = true
 
@@ -262,6 +294,7 @@ class TypeToTalkCoordinator: ObservableObject {
             switch accessibility.insertText(finalText) {
             case .success:
                 statusMessage = "完了"
+                performHapticFeedback(.alignment)
             case .missingPermission:
                 statusMessage = "アクセシビリティ権限が必要です（テキスト入力に必要）"
                 showAccessibilityPermissionAlert = true
@@ -275,6 +308,7 @@ class TypeToTalkCoordinator: ObservableObject {
             do {
                 await synchronizeModelsForCurrentSettings()
                 recordingURL = try await recorder.startRecording()
+                performHapticFeedback(.generic)
                 statusMessage = "録音中..."
             } catch {
                 statusMessage = "録音エラー: \(error.localizedDescription)"
@@ -348,6 +382,10 @@ class TypeToTalkCoordinator: ObservableObject {
             statusMessage = "\(source) を受信"
         }
         NSSound.beep()
+    }
+
+    private func performHapticFeedback(_ pattern: NSHapticFeedbackManager.FeedbackPattern) {
+        NSHapticFeedbackManager.defaultPerformer.perform(pattern, performanceTime: .now)
     }
     
     private var activeFormatterProvider: FormatterProvider {
@@ -464,7 +502,8 @@ class TypeToTalkCoordinator: ObservableObject {
 @main
 struct TypeToTalkApp: App {
     @StateObject private var coordinator = TypeToTalkCoordinator()
-    
+    @Environment(\.scenePhase) private var scenePhase
+
     var body: some Scene {
         WindowGroup {
             TypeToTalkMainView(coordinator: coordinator)
@@ -487,6 +526,12 @@ struct TypeToTalkApp: App {
                 }
                 .onChange(of: coordinator.settings.bonsaiCustomModelID) { _, _ in
                     coordinator.bonsai.configureSelectedModel(coordinator.settings.resolvedBonsaiModelID)
+                }
+                .onChange(of: scenePhase) { _, newPhase in
+                    // フォアグラウンド復帰時に権限状態を最新化（システム設定で変更後の反映）
+                    if newPhase == .active {
+                        coordinator.accessibility.refreshPermissionStatus()
+                    }
                 }
         }
         .windowStyle(.hiddenTitleBar)
