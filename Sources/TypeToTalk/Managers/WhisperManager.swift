@@ -10,18 +10,28 @@ enum WhisperLoadState: Equatable {
 
 @MainActor
 class WhisperManager: ObservableObject {
-    @Published var whisperKit: WhisperKit?
+    @Published var whisperKit: WhisperKit? {
+        didSet { refreshStatusText() }
+    }
     @Published var isTranscribing = false
     @Published var lastTranscription: String = ""
     @Published var isLoadingModel = false
-    @Published private(set) var loadState: WhisperLoadState = .idle
-    @Published private(set) var loadingStatusText = "未読込"
-    
+    @Published private(set) var loadState: WhisperLoadState = .idle {
+        didSet { refreshStatusText() }
+    }
+    @Published private(set) var loadingStatusText = "未読込" {
+        didSet { refreshStatusText() }
+    }
+    @Published private(set) var statusText: String = "未読込"
+
     private let settings: SettingsManager
-    private var loadedModelID: String?
-    
+    private var loadedModelID: String? {
+        didSet { refreshStatusText() }
+    }
+
     init(settings: SettingsManager) {
         self.settings = settings
+        refreshStatusText()
     }
     
     var selectedModelID: String {
@@ -44,16 +54,16 @@ class WhisperManager: ObservableObject {
         !selectedModelID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
     
-    var statusText: String {
+    private func refreshStatusText() {
         switch loadState {
         case .idle:
-            return needsExplicitLoad ? "未読込" : "準備完了"
+            statusText = needsExplicitLoad ? "未読込" : "準備完了"
         case .loading:
-            return loadingStatusText
+            statusText = loadingStatusText
         case .loaded:
-            return needsExplicitLoad ? "未読込" : "準備完了"
+            statusText = needsExplicitLoad ? "未読込" : "準備完了"
         case let .failed(message):
-            return "失敗: \(message)"
+            statusText = "失敗: \(message)"
         }
     }
     
