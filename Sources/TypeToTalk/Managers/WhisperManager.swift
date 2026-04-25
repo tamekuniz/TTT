@@ -63,13 +63,39 @@ class WhisperManager: ObservableObject {
 
     func ensureSelectedModelLoaded() async {
         guard canAutoLoad else { return }
+        // 自動ロードはローカルにモデルが既にダウンロードされている場合のみ。
+        // 未ダウンロードなら勝手にネットへ取りに行かず、状態は .idle のままサイレントに return。
+        // 明示的な「再読込」は loadSelectedModel() 経由で行うこと。
+        guard isLocalModelAvailable(variant: selectedModelID) else { return }
         await setupWhisper(forceReload: false)
     }
-    
+
     func unloadModel() {
         whisperKit = nil
         loadedModelID = nil
         loadState = .idle
+    }
+
+    /// WhisperKit が利用するローカルキャッシュ（`~/Documents/huggingface/models/argmaxinc/whisperkit-coreml/<variant>/`）
+    /// に該当 variant のモデルディレクトリが存在し、中身が空でないかを判定する。
+    ///
+    /// - Note: `HubApi(downloadBase: nil)` のデフォルト挙動 (`Documents/huggingface`) と
+    ///         `localRepoLocation`（`<base>/<repoType>/<repoID>`）の組み合わせに合わせている。
+    private func isLocalModelAvailable(variant: String) -> Bool {
+        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let modelDir = documents
+            .appendingPathComponent("huggingface")
+            .appendingPathComponent("models")
+            .appendingPathComponent("argmaxinc")
+            .appendingPathComponent("whisperkit-coreml")
+            .appendingPathComponent(variant)
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: modelDir.path, isDirectory: &isDir), isDir.boolValue else {
+            return false
+        }
+        // 中途半端に作られた空ディレクトリへの防御
+        let contents = (try? FileManager.default.contentsOfDirectory(atPath: modelDir.path)) ?? []
+        return !contents.isEmpty
     }
     
     private func setupWhisper(forceReload: Bool) async {

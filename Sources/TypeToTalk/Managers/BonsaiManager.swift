@@ -22,10 +22,12 @@ final class BonsaiManager: ObservableObject {
     private var modelContainer: ModelContainer?
     private let downloader: any Downloader
     private let tokenizerLoader: any TokenizerLoader
-    
+    private let modelsBaseDirectory: URL
+
     init() {
         let baseDirectory = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".typetotalk/models")
+        self.modelsBaseDirectory = baseDirectory
         self.downloader = HuggingFaceHubDownloader(downloadBase: baseDirectory)
         self.tokenizerLoader = HuggingFaceTokenizerLoader()
     }
@@ -103,6 +105,10 @@ final class BonsaiManager: ObservableObject {
     func ensureSelectedModelLoaded(modelID: String) async {
         currentSelectedModelID = modelID
         guard canAutoLoad else { return }
+        // 自動ロードはローカルにモデルが既にダウンロードされている場合のみ。
+        // 未ダウンロードなら勝手にネットへ取りに行かず、状態は .idle のままサイレントに return。
+        // 明示的な「再読込」は loadSelectedModel(modelID:) 経由で行うこと。
+        guard isLocalModelAvailable(modelID: modelID) else { return }
         do {
             _ = try await loadModel(modelID: modelID)
         } catch {
@@ -110,6 +116,21 @@ final class BonsaiManager: ObservableObject {
             loadState = .failed(message: message)
             statusMessage = "失敗: \(message)"
         }
+    }
+
+    /// `~/.typetotalk/models/<modelID>/` にモデル本体が既にダウンロードされ、中身が空でないかを判定する。
+    ///
+    /// `HuggingFaceHubDownloader` (= `HubApi.snapshot`) は `<downloadBase>/<modelID>/` 配下に展開するため、
+    /// ここで参照する `modelsBaseDirectory` は init で `downloader` に渡したものと同一でなければならない。
+    private func isLocalModelAvailable(modelID: String) -> Bool {
+        let modelDir = modelsBaseDirectory.appendingPathComponent(modelID)
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: modelDir.path, isDirectory: &isDir), isDir.boolValue else {
+            return false
+        }
+        // 中途半端に作られた空ディレクトリへの防御
+        let contents = (try? FileManager.default.contentsOfDirectory(atPath: modelDir.path)) ?? []
+        return !contents.isEmpty
     }
     
     func loadedContainer(for modelID: String) -> ModelContainer? {
