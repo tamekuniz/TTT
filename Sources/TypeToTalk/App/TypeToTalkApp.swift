@@ -387,8 +387,45 @@ struct MenuBarLabel: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var didLaunch = false
 
+    /// AppStatus と権限状態に応じた SF Symbol 名。
+    /// 形状の差別化を最優先（macOS の menubar template mode で色が無視されるリスクあり）。
+    private var iconName: String {
+        switch coordinator.currentStatus {
+        case .idle:
+            return coordinator.accessibility.hasPermission ? "mic.circle" : "exclamationmark.circle"
+        case .recording:
+            return "mic.circle.fill"
+        case .processing:
+            return "arrow.triangle.2.circlepath"
+        case .error:
+            return "exclamationmark.circle"
+        }
+    }
+
+    /// AppStatus と権限状態に応じた前景色（template mode 下では効かない可能性あり、副次的）。
+    /// nil の場合は foregroundStyle を適用しない（システムデフォルト）。
+    private var iconColor: Color? {
+        switch coordinator.currentStatus {
+        case .idle:
+            return coordinator.accessibility.hasPermission ? nil : .orange
+        case .recording:
+            return .red
+        case .processing:
+            return .orange
+        case .error:
+            return .red
+        }
+    }
+
     var body: some View {
-        Image(systemName: "mic.circle")
+        Group {
+            if let color = iconColor {
+                Image(systemName: iconName)
+                    .foregroundStyle(color)
+            } else {
+                Image(systemName: iconName)
+            }
+        }
             .onAppear {
                 if !didLaunch {
                     didLaunch = true
@@ -413,6 +450,52 @@ struct MenuBarLabel: View {
     }
 }
 
+/// MenuBarExtra のメニュー本体（クリック時に展開される項目群）。
+/// `@ObservedObject` で coordinator を購読することで、currentStatus / hasPermission の
+/// 変化が確実に View 再評価へ反映される。
+/// （MenuBarExtra のクロージャに直接 if/switch を書く方式は ViewBuilder の
+///   case パターン制約で動かない可能性があったため、独立 View として切り出している。）
+struct MenuContentView: View {
+    @ObservedObject var coordinator: TypeToTalkCoordinator
+
+    var body: some View {
+        // A. 権限誘導項目（権限なし時のみ、メニュー先頭）
+        if !coordinator.accessibility.hasPermission {
+            Button("アクセシビリティ権限を設定...") {
+                coordinator.accessibility.openAccessibilitySettings()
+            }
+            Divider()
+        }
+
+        // B. ステータス表示行（idle 以外で表示、表示専用なので .disabled(true)）
+        switch coordinator.currentStatus {
+        case .idle:
+            EmptyView()
+        case .recording:
+            Button("録音中") {}
+                .disabled(true)
+            Divider()
+        case .processing:
+            Button("処理中…") {}
+                .disabled(true)
+            Divider()
+        case .error(let reason):
+            Button("エラー: \(reason)") {}
+                .disabled(true)
+            Divider()
+        }
+
+        // C. 既存メニュー（変更なし）
+        SettingsLink {
+            Text("設定...")
+        }
+        Divider()
+        Button("TypeToTalk を終了") {
+            NSApplication.shared.terminate(nil)
+        }
+    }
+}
+
 @main
 struct TypeToTalkApp: App {
     @StateObject private var coordinator = TypeToTalkCoordinator()
@@ -424,13 +507,7 @@ struct TypeToTalkApp: App {
 
     var body: some Scene {
         MenuBarExtra {
-            SettingsLink {
-                Text("設定...")
-            }
-            Divider()
-            Button("TypeToTalk を終了") {
-                NSApplication.shared.terminate(nil)
-            }
+            MenuContentView(coordinator: coordinator)
         } label: {
             MenuBarLabel(coordinator: coordinator)
         }
