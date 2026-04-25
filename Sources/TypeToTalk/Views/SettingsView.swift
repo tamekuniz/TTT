@@ -228,10 +228,6 @@ struct SettingsView: View {
                             KeyboardShortcuts.Recorder(for: .triggerRecording)
                         }
 
-                        settingRow("ウインドウ表示トグル") {
-                            KeyboardShortcuts.Recorder(for: .toggleWindow)
-                        }
-
                         settingRow("動作") {
                             Picker("トリガー動作", selection: $settings.shortcutTriggerModeRawValue) {
                                 ForEach(ShortcutTriggerMode.allCases) { mode in

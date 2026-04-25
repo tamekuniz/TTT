@@ -4,7 +4,6 @@ import KeyboardShortcuts
 
 extension KeyboardShortcuts.Name {
     static let triggerRecording = Self("triggerRecording")
-    static let toggleWindow = Self("toggleWindow")
 }
 
 struct TypeToTalkMainView: View {
@@ -222,12 +221,6 @@ class TypeToTalkCoordinator: ObservableObject {
                 await self?.handleTriggerShortcutUp()
             }
         }
-
-        KeyboardShortcuts.onKeyDown(for: .toggleWindow) { [weak self] in
-            Task { @MainActor in
-                self?.handleToggleWindow()
-            }
-        }
     }
 
     func handleAppLaunch() {
@@ -316,12 +309,16 @@ class TypeToTalkCoordinator: ObservableObject {
         guard !isTriggerShortcutPressed else { return }
         isTriggerShortcutPressed = true
         recordTriggerFeedback(source: "グローバル")
-        
+
         switch settings.shortcutTriggerMode {
         case .disabled:
             break
         case .toggle:
-            showRecorderWindow()
+            // 録音中でないときは、ウインドウを必ず手前に出してから録音開始。
+            // 録音中のときは停止のみ（ウインドウは閉じない）。
+            if !recorder.isRecording {
+                showRecorderWindow()
+            }
             await toggleRecording()
         case .pushToTalk:
             if !recorder.isRecording && !isProcessing {
@@ -425,26 +422,6 @@ class TypeToTalkCoordinator: ObservableObject {
             }
         }
         NSApplication.shared.windows.first?.makeKeyAndOrderFront(nil)
-    }
-
-    private func handleToggleWindow() {
-        let recorderWindow = NSApplication.shared.windows.first { window in
-            window.identifier?.rawValue == "RecorderWindow"
-        }
-
-        guard let window = recorderWindow else {
-            // ウインドウが未生成の場合は表示する（フォールバック）
-            showRecorderWindow()
-            return
-        }
-
-        if window.isVisible {
-            window.orderOut(nil)
-        } else {
-            NSApplication.shared.setActivationPolicy(.regular)
-            NSApplication.shared.activate(ignoringOtherApps: true)
-            window.makeKeyAndOrderFront(nil)
-        }
     }
 
     func synchronizeModelsForCurrentSettings() async {
