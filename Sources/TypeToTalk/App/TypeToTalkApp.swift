@@ -101,7 +101,7 @@ struct TypeToTalkMainView: View {
             }
             Button("キャンセル", role: .cancel) { }
         } message: {
-            Text("TypeToTalk が文字起こし結果をフォーカス中の入力欄に書き込むには、アクセシビリティ権限が必要です。\n\nシステム設定 → プライバシーとセキュリティ → アクセシビリティ で TypeToTalk を有効にしてください。\n\n権限を有効化したあと TypeToTalk に戻ると自動で再チェックされます。反映されない場合は設定画面の「権限を再チェック」を押してください。")
+            Text("TypeToTalk が文字起こし結果をフォーカス中の入力欄に書き込むには、アクセシビリティ権限が必要です。\n\nシステム設定 → プライバシーとセキュリティ → アクセシビリティ で TypeToTalk を有効にしてください。\n\n権限を有効化したあと TypeToTalk に戻ると自動で再チェックされます。反映されない場合は設定画面の「アプリを再起動」を押してください。")
         }
     }
 
@@ -424,6 +424,26 @@ class TypeToTalkCoordinator: ObservableObject {
         NSApplication.shared.windows.first?.makeKeyAndOrderFront(nil)
     }
 
+    /// アプリを再起動する。新しいプロセスを openApplication で起動してから自身を terminate する。
+    /// 主用途: アクセシビリティ権限の AXIsProcessTrusted キャッシュを破棄するため。
+    func restartApp() {
+        let appURL = Bundle.main.bundleURL
+        let config = NSWorkspace.OpenConfiguration()
+        config.createsNewApplicationInstance = true
+        NSWorkspace.shared.openApplication(
+            at: appURL,
+            configuration: config,
+            completionHandler: { _, error in
+                DispatchQueue.main.async {
+                    if error == nil {
+                        NSApp.terminate(nil)
+                    }
+                    // error 時は terminate しない（ユーザーが手動でリトライ可能）
+                }
+            }
+        )
+    }
+
     func synchronizeModelsForCurrentSettings() async {
         await whisper.ensureSelectedModelLoaded()
         bonsai.configureSelectedModel(settings.resolvedBonsaiModelID)
@@ -512,7 +532,8 @@ struct TypeToTalkApp: App {
                 settings: coordinator.settings,
                 whisper: coordinator.whisper,
                 bonsai: coordinator.bonsai,
-                accessibility: coordinator.accessibility
+                accessibility: coordinator.accessibility,
+                coordinator: coordinator
             )
         }
     }

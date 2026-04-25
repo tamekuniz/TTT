@@ -26,14 +26,6 @@ class AccessibilityManager: ObservableObject {
         hasPermission = AXIsProcessTrustedWithOptions(options)
     }
 
-    /// UI の「権限を再チェック」ボタン用。プロンプトを出さずに最新状態を取得して結果を返す。
-    /// - Returns: 現在の `hasPermission` の最新値（true なら権限あり）
-    @discardableResult
-    func recheckPermissionAndOpenSettingsIfNeeded() -> Bool {
-        refreshPermissionStatus()
-        return hasPermission
-    }
-
     func openAccessibilitySettings() {
         guard let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") else {
             return

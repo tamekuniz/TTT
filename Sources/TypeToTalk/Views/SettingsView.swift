@@ -6,9 +6,11 @@ struct SettingsView: View {
     @ObservedObject var whisper: WhisperManager
     @ObservedObject var bonsai: BonsaiManager
     @ObservedObject var accessibility: AccessibilityManager
-    
+    @ObservedObject var coordinator: TypeToTalkCoordinator
+
     @State private var newWord = ""
     @State private var newReading = ""
+    @State private var showRestartConfirmation = false
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -279,14 +281,30 @@ struct SettingsView: View {
                                 accessibility.openAccessibilitySettings()
                             }
 
-                            Button("権限を再チェック") {
-                                accessibility.refreshPermissionStatus()
+                            Button("アプリを再起動") {
+                                if coordinator.recorder.isRecording || coordinator.isProcessing {
+                                    showRestartConfirmation = true
+                                } else {
+                                    coordinator.restartApp()
+                                }
+                            }
+                            .confirmationDialog(
+                                "録音中または処理中です。アプリを再起動しますか？",
+                                isPresented: $showRestartConfirmation,
+                                titleVisibility: .visible
+                            ) {
+                                Button("再起動する", role: .destructive) {
+                                    coordinator.restartApp()
+                                }
+                                Button("キャンセル", role: .cancel) {}
+                            } message: {
+                                Text("進行中の録音・処理は失われます。")
                             }
 
                             Spacer()
                         }
 
-                        Text("「システム設定を開く」を押すと、システム設定 → プライバシーとセキュリティ → アクセシビリティ が直接開きます。一覧で TypeToTalk を有効にしたあと、本アプリへ戻ると自動で再チェックされます。反映されない場合は「権限を再チェック」を押してください。")
+                        Text("「システム設定を開く」を押すと、システム設定 → プライバシーとセキュリティ → アクセシビリティ が直接開きます。一覧で TypeToTalk を有効にしたあと、本アプリへ戻ると自動で再チェックされます。反映されない場合は「アプリを再起動」を押すと、新しいプロセスで権限が確実に認識されます。")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
