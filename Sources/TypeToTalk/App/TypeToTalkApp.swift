@@ -15,8 +15,6 @@ struct TypeToTalkMainView: View {
         VStack(spacing: 18) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text("TypeToTalk")
-                        .font(.title3.weight(.semibold))
                     if !coordinator.statusMessage.isEmpty {
                         Text(coordinator.statusMessage)
                             .font(.subheadline)
@@ -510,9 +508,7 @@ struct TypeToTalkApp: App {
                     NSApplication.shared.activate(ignoringOtherApps: true)
                     if let window = NSApplication.shared.windows.first {
                         window.identifier = NSUserInterfaceItemIdentifier("RecorderWindow")
-                        window.titleVisibility = .hidden
-                        window.titlebarAppearsTransparent = true
-                        window.isMovableByWindowBackground = true
+                        window.title = "TypeToTalk"
                     }
                     coordinator.handleAppLaunch()
                 }
@@ -532,7 +528,6 @@ struct TypeToTalkApp: App {
                     }
                 }
         }
-        .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
         
         Settings {
