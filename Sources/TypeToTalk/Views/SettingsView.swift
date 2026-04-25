@@ -28,10 +28,16 @@ struct SettingsView: View {
             
             HStack {
                 Spacer()
-                Text(appVersionText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(appVersionLine)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                    Text(appBuildLine)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
             }
         }
         .padding(16)
@@ -411,10 +417,15 @@ struct SettingsView: View {
         )
     }
 
-    private var appVersionText: String {
+    private var appVersionLine: String {
         let info = Bundle.main.infoDictionary ?? [:]
         let shortVersion = info["CFBundleShortVersionString"] as? String ?? "0.1.0"
+        return "バージョン \(shortVersion)"
+    }
+
+    private var appBuildLine: String {
+        let info = Bundle.main.infoDictionary ?? [:]
         let buildNumber = info["CFBundleVersion"] as? String ?? "-"
-        return "Version \(shortVersion) (\(buildNumber))"
+        return "ビルド \(buildNumber)"
     }
 }

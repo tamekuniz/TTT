@@ -1,0 +1,7 @@
+VERSION_FILE_1_PATH=project.yml
+VERSION_FILE_1_KEY=CURRENT_PROJECT_VERSION
+VERSION_FORMAT="YYYYMMDD + 連番アルファベット（例: 20260425A）"
+VERSION_EXAMPLE="20260425A"
+DEPLOY_COMMAND="open ~/Library/Developer/Xcode/DerivedData/TypeToTalk-bflowijsxyneuzgvdqdbgbmersdd/Build/Products/Debug/TypeToTalk.app"
+DEPLOY_TARGET="ローカルMac"
+VERIFY_TYPE="Settings 画面で バージョン/ビルド 表示を目視確認"
