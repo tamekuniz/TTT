@@ -1,14 +1,19 @@
 import Foundation
 
 @MainActor
-class GroqManager: ObservableObject {
-    private let apiEndpoint = "https://api.groq.com/openai/v1/chat/completions"
-    
-    func processText(_ text: String, apiKey: String, prompt: String) async -> String {
-        guard !apiKey.isEmpty else { return text }
+class OpenAICompatibleManager: ObservableObject {
+    func processText(
+        _ text: String,
+        endpoint: String,
+        model: String,
+        apiKey: String,
+        prompt: String
+    ) async -> String {
+        guard !apiKey.isEmpty, !model.isEmpty else { return text }
+        guard let url = URL(string: endpoint) else { return text }
         
         let requestBody: [String: Any] = [
-            "model": "llama3-8b-8192",
+            "model": model,
             "messages": [
                 ["role": "system", "content": prompt],
                 ["role": "user", "content": text]
@@ -16,8 +21,9 @@ class GroqManager: ObservableObject {
             "temperature": 0.5
         ]
         
-        guard let url = URL(string: apiEndpoint),
-              let httpBody = try? JSONSerialization.data(withJSONObject: requestBody) else { return text }
+        guard let httpBody = try? JSONSerialization.data(withJSONObject: requestBody) else {
+            return text
+        }
         
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -34,7 +40,7 @@ class GroqManager: ObservableObject {
                 return content.trimmingCharacters(in: .whitespacesAndNewlines)
             }
         } catch {
-            print("Groq API error: \(error)")
+            print("Formatter API error: \(error)")
         }
         
         return text

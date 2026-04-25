@@ -1,0 +1,64 @@
+name: TypeToTalk
+options:
+  minimumXcodeGenVersion: 2.45.0
+  deploymentTarget:
+    macOS: "14.0"
+settings:
+  base:
+    PRODUCT_BUNDLE_IDENTIFIER: com.tamekuniz.TypeToTalk
+    PRODUCT_NAME: TypeToTalk
+    INFOPLIST_KEY_CFBundleDisplayName: TypeToTalk
+    INFOPLIST_KEY_CFBundleName: TypeToTalk
+    SWIFT_VERSION: "6.0"
+    CURRENT_PROJECT_VERSION: 1
+    MARKETING_VERSION: 0.1.0
+    GENERATE_INFOPLIST_FILE: NO
+    INFOPLIST_FILE: Sources/TypeToTalk/Resources/Info.plist
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    ENABLE_DEBUG_DYLIB: NO
+packages:
+  WhisperKit:
+    url: https://github.com/argmaxinc/WhisperKit
+    from: 0.18.0
+  KeyboardShortcuts:
+    url: https://github.com/sindresorhus/KeyboardShortcuts
+    from: 2.4.0
+  mlx-swift-lm:
+    url: https://github.com/ml-explore/mlx-swift-lm
+    from: 3.31.3
+  swift-transformers:
+    url: https://github.com/huggingface/swift-transformers
+    from: 1.1.9
+targets:
+  TypeToTalk:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/TypeToTalk
+        excludes:
+          - Resources/Info.plist
+    dependencies:
+      - package: WhisperKit
+        product: WhisperKit
+      - package: KeyboardShortcuts
+        product: KeyboardShortcuts
+      - package: mlx-swift-lm
+        product: MLXLLM
+      - package: mlx-swift-lm
+        product: MLXLMCommon
+      - package: swift-transformers
+        product: Hub
+      - package: swift-transformers
+        product: Tokenizers
+    settings:
+      base:
+        PRODUCT_MODULE_NAME: TypeToTalk
+schemes:
+  TypeToTalk:
+    build:
+      targets:
+        TypeToTalk: all
+    run:
+      config: Debug
+    archive:
+      config: Release

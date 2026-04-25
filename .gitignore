@@ -10,4 +10,11 @@ DerivedData/
 
 # App Specific
 recording.wav
-.ttt/models/
+.typetotalk/models/
+
+# Build output
+dist/
+
+# Claude Code / フォK
+.claude/.fok-state-*
+.claude/.fok-active
