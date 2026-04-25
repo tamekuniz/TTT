@@ -145,7 +145,10 @@ final class BonsaiManager: ObservableObject {
     /// `HuggingFaceHubDownloader` (= `HubApi.snapshot`) は `<downloadBase>/<modelID>/` 配下に展開するため、
     /// ここで参照する `modelsBaseDirectory` は init で `downloader` に渡したものと同一でなければならない。
     private func isLocalModelAvailable(modelID: String) -> Bool {
-        let modelDir = modelsBaseDirectory.appendingPathComponent(modelID)
+        // HubApi.localRepoLocation は <downloadBase>/<repo.type.rawValue>/<repo.id> を返す。
+        // RepoType.models は "models" のため、実体は <downloadBase>/models/<modelID>/ に置かれる。
+        // ここの検査パスもそれに合わせて "models/" を1段挟む必要がある。
+        let modelDir = modelsBaseDirectory.appendingPathComponent("models").appendingPathComponent(modelID)
         var isDir: ObjCBool = false
         let exists = FileManager.default.fileExists(atPath: modelDir.path, isDirectory: &isDir)
         guard exists, isDir.boolValue else {
