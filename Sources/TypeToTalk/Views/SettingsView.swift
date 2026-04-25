@@ -154,19 +154,63 @@ struct SettingsView: View {
                                 .foregroundStyle(.secondary)
                         }
                         
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("整形プロンプト")
+                        settingRow("聞き取り言語") {
+                            Picker("聞き取り言語", selection: $settings.whisperLanguage) {
+                                Text("日本語").tag("ja")
+                                Text("English").tag("en")
+                                Text("自動").tag("auto")
+                            }
+                            .pickerStyle(.segmented)
+                            .labelsHidden()
+                        }
+
+                        settingRow("整形言語") {
+                            Picker("整形言語", selection: $settings.formatterLanguage) {
+                                Text("日本語").tag("ja")
+                                Text("English").tag("en")
+                            }
+                            .pickerStyle(.segmented)
+                            .labelsHidden()
+                        }
+
+                        settingRow("文体") {
+                            Picker("文体", selection: $settings.textStyle) {
+                                Text("ですます調").tag("desuMasu")
+                                Text("だ・である調").tag("daDearu")
+                                Text("自動").tag("auto")
+                            }
+                            .pickerStyle(.segmented)
+                            .labelsHidden()
+                        }
+
+                        settingRow("プロンプトモード") {
+                            Picker("プロンプトモード", selection: $settings.promptMode) {
+                                Text("プリセット").tag("preset")
+                                Text("カスタム").tag("custom")
+                            }
+                            .pickerStyle(.segmented)
+                            .labelsHidden()
+                        }
+
+                        if settings.promptMode == "custom" {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("カスタムプロンプト")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                TextEditor(text: $settings.systemPrompt)
+                                    .frame(minHeight: 90)
+                                    .padding(6)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 8)
+                                            .stroke(Color.secondary.opacity(0.2))
+                                    )
+                            }
+                        } else {
+                            Text("プリセット時は、整形言語と文体から最適なプロンプトを自動生成します（Bonsai は軽量版、Groq / OpenAI は few-shot 込みの詳細版）。")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                            TextEditor(text: $settings.systemPrompt)
-                                .frame(minHeight: 90)
-                                .padding(6)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .stroke(Color.secondary.opacity(0.2))
-                                )
                         }
-                        
+
                         if settings.formatterProvider != .bonsai {
                             Text("ネットワーク未接続時は自動で Bonsai にフォールバックします。")
                                 .font(.caption)
@@ -207,25 +251,32 @@ struct SettingsView: View {
                 }
                 
                 GroupBox {
-                    HStack {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("アクセシビリティ権限")
-                            Text("テキストを直接入力するために必要です。")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        
-                        Spacer()
-                        
-                        Image(systemName: accessibility.hasPermission ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                            .foregroundStyle(accessibility.hasPermission ? .green : .orange)
-                        Button(accessibility.hasPermission ? "許可済み" : "設定を開く") {
-                            if !accessibility.hasPermission {
-                                accessibility.requestPermission()
-                                accessibility.openAccessibilitySettings()
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("アクセシビリティ権限")
+                                Text("TypeToTalk が文字起こし結果をフォーカス中の入力欄に直接書き込むために必要です。")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
                             }
+
+                            Spacer()
+
+                            Image(systemName: accessibility.hasPermission ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                                .foregroundStyle(accessibility.hasPermission ? .green : .orange)
+                            Button(accessibility.hasPermission ? "許可済み" : "設定を開く") {
+                                if !accessibility.hasPermission {
+                                    accessibility.requestPermission()
+                                    accessibility.openAccessibilitySettings()
+                                }
+                            }
+                            .disabled(accessibility.hasPermission)
                         }
-                        .disabled(accessibility.hasPermission)
+
+                        Text("「設定を開く」を押すと、システム設定 → プライバシーとセキュリティ → アクセシビリティ が直接開きます。一覧で TypeToTalk を有効にしてください。許可されると録音停止後にテキストが自動入力されます。")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                 } label: {
                     sectionTitle("システム権限", subtitle: "入力に必要な macOS 権限")

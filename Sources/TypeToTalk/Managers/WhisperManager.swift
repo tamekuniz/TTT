@@ -101,17 +101,35 @@ class WhisperManager: ObservableObject {
         }
     }
     
-    func transcribe(audioURL: URL) async -> String {
+    /// 音声ファイルを文字起こしする。
+    ///
+    /// - Parameters:
+    ///   - audioURL: 入力音声ファイルの URL。
+    ///   - language: "ja" / "en" / "auto"。"auto" は WhisperKit の言語自動検出を有効化し、
+    ///               それ以外は DecodingOptions.language に明示する。デフォルトは "ja"（既存挙動互換）。
+    /// - Returns: 認識結果テキスト。失敗時は空文字列。
+    func transcribe(audioURL: URL, language: String = "ja") async -> String {
         guard let whisperKit = whisperKit else {
             return ""
         }
-        
+
         isTranscribing = true
         defer { isTranscribing = false }
-        
+
+        let decodeOptions: DecodingOptions
+        if language == "auto" {
+            // language 未指定 + detectLanguage 明示で WhisperKit 内部の自動検出に委ねる
+            decodeOptions = DecodingOptions(detectLanguage: true)
+        } else {
+            decodeOptions = DecodingOptions(language: language)
+        }
+
         do {
-            // WhisperKit 0.18.0 の仕様に合わせる
-            let results = try await whisperKit.transcribe(audioPath: audioURL.path)
+            // WhisperKit 0.18.0: transcribe(audioPath:decodeOptions:callback:) async throws -> [TranscriptionResult]
+            let results = try await whisperKit.transcribe(
+                audioPath: audioURL.path,
+                decodeOptions: decodeOptions
+            )
             let combinedText = results.compactMap { $0.text }.joined(separator: " ")
             lastTranscription = combinedText
             return combinedText

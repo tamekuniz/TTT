@@ -16,19 +16,22 @@ struct TypeToTalkMainView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("TypeToTalk")
                         .font(.title3.weight(.semibold))
-                    Text(coordinator.statusMessage)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                    if !coordinator.statusMessage.isEmpty {
+                        Text(coordinator.statusMessage)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
                 }
-                
+
                 Spacer()
-                
+
                 SettingsLink {
                     Image(systemName: "gearshape")
                         .font(.title3)
                 }
                 .buttonStyle(.plain)
             }
+            .padding(.leading, 56)
             
             Button {
                 Task {
@@ -51,19 +54,12 @@ struct TypeToTalkMainView: View {
                 modelStatusRow(
                     title: "Whisper",
                     detail: coordinator.settings.whisperDisplayName,
-                    status: coordinator.whisper.statusText,
-                    progressLabel: coordinator.whisper.isLoadingModel ? coordinator.whisper.loadingStatusText : nil
+                    status: coordinator.whisper.statusText
                 )
                 modelStatusRow(
                     title: "Formatter",
                     detail: coordinator.activeFormatterDisplayName,
-                    status: coordinator.activeFormatterStatusText,
-                    progressLabel: coordinator.isFormatterLoading ? coordinator.activeFormatterStatusText : nil
-                )
-                infoStatusRow(
-                    title: "Trigger",
-                    detail: coordinator.statusMessage,
-                    status: coordinator.lastTriggerSource
+                    status: coordinator.activeFormatterStatusText
                 )
                 Text("ショートカットで呼び出すと、このダイアログを前面に出します。")
                     .font(.caption)
@@ -75,6 +71,14 @@ struct TypeToTalkMainView: View {
         .frame(width: 360, height: 300)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .padding(10)
+        .alert("アクセシビリティ権限が必要です", isPresented: $coordinator.showAccessibilityPermissionAlert) {
+            Button("システム設定を開く") {
+                coordinator.accessibility.openAccessibilitySettings()
+            }
+            Button("キャンセル", role: .cancel) { }
+        } message: {
+            Text("TypeToTalk が文字起こし結果をフォーカス中の入力欄に書き込むには、アクセシビリティ権限が必要です。\n\nシステム設定 → プライバシーとセキュリティ → アクセシビリティ で TypeToTalk を有効にしてください。")
+        }
     }
 
     private var micButtonColor: Color {
@@ -92,8 +96,7 @@ struct TypeToTalkMainView: View {
     private func modelStatusRow(
         title: String,
         detail: String,
-        status: String,
-        progressLabel: String?
+        status: String
     ) -> some View {
         HStack {
             VStack(alignment: .leading, spacing: 3) {
@@ -102,40 +105,13 @@ struct TypeToTalkMainView: View {
                     .foregroundStyle(.secondary)
                 Text(detail)
                     .font(.subheadline)
-                if let progressLabel, progressLabel != status {
-                    Text(progressLabel)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
             }
-            
+
             Spacer()
-            
+
             VStack(alignment: .trailing, spacing: 6) {
                 statusBadge(status)
             }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color.white.opacity(0.6))
-        )
-    }
-
-    private func infoStatusRow(title: String, detail: String, status: String) -> some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text(detail)
-                    .font(.subheadline)
-            }
-
-            Spacer()
-
-            statusBadge(status)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
@@ -189,9 +165,10 @@ class TypeToTalkCoordinator: ObservableObject {
     @Published var network = NetworkManager()
     @Published var settings: SettingsManager
     
-    @Published var statusMessage = "待機中"
+    @Published var statusMessage = ""
     @Published var isProcessing = false
     @Published var lastTriggerSource = "未検出"
+    @Published var showAccessibilityPermissionAlert = false
     @Published private(set) var recordingURL: URL?
     
     private var isTriggerShortcutPressed = false
@@ -252,7 +229,10 @@ class TypeToTalkCoordinator: ObservableObject {
             }
             
             // 1. Whisper による文字起こし (素の状態)
-            var rawText = await whisper.transcribe(audioURL: audioURL)
+            var rawText = await whisper.transcribe(
+                audioURL: audioURL,
+                language: settings.whisperLanguage
+            )
             
             guard !rawText.isEmpty else {
                 statusMessage = "文字起こし失敗"
@@ -283,7 +263,8 @@ class TypeToTalkCoordinator: ObservableObject {
             case .success:
                 statusMessage = "完了"
             case .missingPermission:
-                statusMessage = "アクセシビリティ権限が必要です"
+                statusMessage = "アクセシビリティ権限が必要です（テキスト入力に必要）"
+                showAccessibilityPermissionAlert = true
             case .noFocusedElement:
                 statusMessage = "入力先が見つかりません"
             case .unsupportedTarget:
@@ -441,6 +422,17 @@ class TypeToTalkCoordinator: ObservableObject {
     }
     
     private func processText(_ text: String, with provider: FormatterProvider) async -> String {
+        let prompt: String
+        if settings.promptMode == "preset" {
+            prompt = settings.systemPromptForLanguageAndStyle(
+                language: settings.formatterLanguage,
+                style: settings.textStyle,
+                provider: provider
+            )
+        } else {
+            prompt = settings.systemPrompt
+        }
+
         switch provider {
         case .groq:
             return await formatter.processText(
@@ -448,7 +440,7 @@ class TypeToTalkCoordinator: ObservableObject {
                 endpoint: "https://api.groq.com/openai/v1/chat/completions",
                 model: settings.groqModel,
                 apiKey: settings.groqApiKey,
-                prompt: settings.systemPrompt
+                prompt: prompt
             )
         case .openAI:
             return await formatter.processText(
@@ -456,13 +448,13 @@ class TypeToTalkCoordinator: ObservableObject {
                 endpoint: "https://api.openai.com/v1/chat/completions",
                 model: settings.openAIModel,
                 apiKey: settings.openAIApiKey,
-                prompt: settings.systemPrompt
+                prompt: prompt
             )
         case .bonsai:
             bonsai.configureSelectedModel(settings.resolvedBonsaiModelID)
             return await bonsai.processText(
                 text,
-                prompt: settings.systemPrompt,
+                prompt: prompt,
                 modelID: settings.resolvedBonsaiModelID
             )
         }

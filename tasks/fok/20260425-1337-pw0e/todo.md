@@ -1,0 +1,72 @@
+<!--
+タスク分割の根拠:
+- T1 は UI 軽微3件（要件②③④）を `TypeToTalkApp.swift` の View 内に閉じる小修正としてまとめた。すべて TypeToTalkMainView body 周辺の整理で1サイクル内に収まる。
+- T2 は要件①の状態同期バグ。`WhisperManager.statusText` 計算ロジックと `loadingStatusText` の関係を見直す独立タスク。ModelSelectionTests に loading state テスト追加可能。
+- T3 は要件⑤のアクセシビリティ権限説明＋誘導ボタン。メイン画面 UI 追加 + AccessibilityManager 既存メソッドの再利用で範囲限定。
+- T4 は要件⑥⑦を統合。投資 §8（言語設定）と §9（プロンプト改善）は `systemPromptForLanguageAndStyle(language:style:)` で共通化点を持つため分割すると整合性管理が二重化する。promptMode（preset/custom）導入も同時に行う方が SettingsView 構造が綺麗。
+-->
+
+- [ ] T1: メイン画面 UI 軽微整理（タイトル位置／待機中／Trigger 削除）
+  - 対象ファイル:
+    - `Sources/TypeToTalk/App/TypeToTalkApp.swift`
+  - 期待挙動:
+    - 要件②: トラフィックライト（左上から約70px）と "TypeToTalk" タイトルが重ならない（VStack 全体に左 padding を加える、または HStack 左側に固定幅 spacer を入れる）
+    - 要件③: 起動直後の「待機中」表示を整理（`statusMessage` 初期値を空文字に変更し、空のときは Text 自体を非表示にして全体ワークフロー進行表示に専念させる）
+    - 要件④: `infoStatusRow("Trigger", ...)`（L63-67）行を削除し、`lastTriggerSource` の UI バインディングを除去（recordTriggerFeedback の内部更新と NSSound.beep() は保持）
+  - 備考:
+    - 3件すべて TypeToTalkMainView body と Coordinator 初期値の小修正。ロジック変更なし
+    - `lastTriggerSource` プロパティ自体を残すか削るかは実装時判断（UI 参照がなくなれば削除推奨、ただし将来の拡張余地として残す選択もあり）
+    - テストは追加困難（SwiftUI レイアウトは実機目視）。検証は実機ビルド + macOS 14/15 でのトラフィックライト目視確認
+
+- [ ] T2: Whisper/Formatter 状態同期バグ修正
+  - 対象ファイル:
+    - `Sources/TypeToTalk/Managers/WhisperManager.swift`
+    - `Sources/TypeToTalk/Managers/BonsaiManager.swift`（挙動確認のみ、修正は不要見込み）
+    - `Sources/TypeToTalk/App/TypeToTalkApp.swift`（`modelStatusRow` 呼び出し部の整合確認）
+    - `Sources/TypeToTalk/Views/SettingsView.swift`（`loadStatusBlock` 呼び出し部の整合確認）
+    - `Tests/TypeToTalkTests/ModelSelectionTests.swift`（テスト追加）
+  - 期待挙動:
+    - メイン画面の Whisper 状態表示と設定画面の Whisper 状態表示が常に一致する
+    - loading 中はメイン画面・設定画面ともに `loadingStatusText`（"ダウンロード中..." 等の段階的進捗）を表示
+    - loading 終了後は両画面とも "準備完了" / "未読込" / "失敗: ..." が同じ値で表示される
+    - メイン画面 `modelStatusRow` の `progressLabel` パラメータと設定画面 `loadStatusBlock` の `status` パラメータの責務を整理
+  - 備考:
+    - 投資 §2.1 で根因は「メイン画面は `progressLabel` を `isLoadingModel ? loadingStatusText : nil` で条件分岐するが設定画面は常に `status` だけを表示」と推定
+    - 修正方針候補: (a) `statusText` を loading 中に `loadingStatusText` を返すよう統一して両画面とも `statusText` のみを使う、(b) メイン画面側の条件分岐を整理して両画面で同じ「現在見せたい1文字列」を計算する
+    - **テスト追加可能**: `testWhisperStatusTextDuringLoading()` を ModelSelectionTests に追加（投資 §7.2 参照）
+    - 既存テスト `testWhisperManagerRecommendedModelMatchesResolvedSelection` を壊さないこと
+
+- [ ] T3: アクセシビリティ権限の説明強化＋システム設定誘導
+  - 対象ファイル:
+    - `Sources/TypeToTalk/App/TypeToTalkApp.swift`（メイン画面の statusMessage 詳細化、必要なら誘導ボタン/Sheet）
+    - `Sources/TypeToTalk/Managers/AccessibilityManager.swift`（既存 `openAccessibilitySettings()` を再利用、追加実装は不要見込み）
+    - `Sources/TypeToTalk/Views/SettingsView.swift`（説明文の具体化、必要なら追加情報）
+  - 期待挙動:
+    - 権限なしで `insertText` 失敗時、`statusMessage` を「アクセシビリティ権限が必要です」だけでなく「テキスト入力にアクセシビリティ権限が必要です。設定を開きます」程度に具体化
+    - メイン画面で権限が無い状態が検出されたとき、システム設定の Privacy_Accessibility ペインを直接開けるボタンを表示（`AccessibilityManager.openAccessibilitySettings()` を呼ぶ）
+    - 設定画面の説明文（L209-232 周辺）も具体化（何のために必要か、許可後の挙動）
+  - 備考:
+    - `openAccessibilitySettings()` は既存実装あり、再利用するだけ（投資 §2.4）
+    - 配置戦略は実装時判断: アラート / Sheet / インラインボタンのいずれか。投資 §3.5 で複数案示されているので最も自然なものを選ぶ
+    - テスト: AccessibilityManager 単体テストは追加困難（システム API 依存）。実機で権限OFF→ボタンクリック→システム設定が開く流れを目視確認
+
+- [ ] T4: 言語設定＋整形プロンプト構造化（要件⑥⑦統合）
+  - 対象ファイル:
+    - `Sources/TypeToTalk/Managers/SettingsManager.swift`（`whisperLanguage` / `formatterLanguage` / `textStyle` / `promptMode` プロパティ追加、`systemPromptForLanguageAndStyle(_:style:)` メソッド追加、Bonsai 用簡潔版と Groq/OpenAI 用詳細版テンプレートを保持）
+    - `Sources/TypeToTalk/Managers/WhisperManager.swift`（`transcribe(audioURL:language:)` シグネチャ拡張、WhisperKit API への language パラメータ伝播）
+    - `Sources/TypeToTalk/App/TypeToTalkApp.swift`（Coordinator の `processText` で `systemPromptForLanguageAndStyle` を組み立てて各 provider に渡す。`promptMode == "custom"` のときは既存 `systemPrompt` を使う分岐）
+    - `Sources/TypeToTalk/Views/SettingsView.swift`（聞き取り言語 Picker、整形言語 Picker、文体 Picker、プロンプトモード切替 UI 追加。custom モード時のみ TextEditor を表示）
+    - `Tests/TypeToTalkTests/ModelSelectionTests.swift` または新規テストファイル（言語 round-trip、`systemPromptForLanguageAndStyle` の出力検証）
+  - 期待挙動:
+    - 設定画面で「聞き取り言語」「整形言語」「文体」「プロンプトモード（プリセット/カスタム）」を選択できる
+    - 言語設定が WhisperKit transcribe と整形 AI 両方に伝播する（要件⑥）
+    - 整形プロンプトが「役割定義／入力特性／整形ルール／出力形式制約／few-shot」の構造化テンプレートになり、言語×文体で切り替わる（要件⑦）
+    - Bonsai 8B 1-bit でも動く軽量版プロンプトを Bonsai provider 時に使う（context window 配慮）
+    - `promptMode == "custom"` のとき既存ユーザーが編集した `systemPrompt` が温存・優先される（互換性破壊なし）
+  - 備考:
+    - **投資 §8 案A（個別言語設定）+ §9 4 Phase（Bonsai 最適化→文体→プロンプトモード→テスト）を採用**。プランナーが T4+T5 を1タスクに統合した理由は冒頭コメント参照
+    - **不確か（実装時要確認）**: WhisperKit 0.18.0 の `transcribe()` メソッドが `language` パラメータをどう受けるか。投資 §8.5 でも明記されている。実装着手時に WhisperKit ソースまたはドキュメントを確認すること
+    - **不確か**: Bonsai 8B の context window 実値（MLXLLM 経由）。投資 §9.6 で 3K-4K tokens 推奨と保守見積もり
+    - **テスト追加可能**: SettingsManager の言語/文体 round-trip、`systemPromptForLanguageAndStyle` の出力に必要キーワードが含まれているか（投資 §8.7・§9.7 参照）
+    - 文体の Swift enum 名は ASCII で統一推奨（`daDearu` など）。投資 §9.3 では `daである` と書かれているが Swift 識別子としてはアスキーが望ましい
+    - 既存ユーザー互換: `promptMode` の初期値を "preset" にすると既存 `systemPrompt` 編集者の出力が変わる懸念あり。初期値は "custom"（既存挙動維持）にして、設定画面でユーザーが明示的に "preset" に切り替える設計を推奨（実装時にズンジー判断要なら戻す）

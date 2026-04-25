@@ -184,7 +184,29 @@ class SettingsManager: ObservableObject {
     @Published var systemPrompt: String {
         didSet { UserDefaults.standard.set(systemPrompt, forKey: "systemPrompt") }
     }
-    
+
+    /// 聞き取り言語コード（"ja" / "en" / "auto"）。WhisperKit の DecodingOptions.language に渡す。
+    /// "auto" のときは language を渡さず detectLanguage = true で自動検出する。
+    @Published var whisperLanguage: String {
+        didSet { UserDefaults.standard.set(whisperLanguage, forKey: "whisperLanguage") }
+    }
+
+    /// 整形 AI のターゲット言語コード（"ja" / "en"）。systemPromptForLanguageAndStyle のテンプレート選択に使う。
+    @Published var formatterLanguage: String {
+        didSet { UserDefaults.standard.set(formatterLanguage, forKey: "formatterLanguage") }
+    }
+
+    /// 整形時の文体（"desuMasu" / "daDearu" / "auto"）。英語時は無視される。
+    @Published var textStyle: String {
+        didSet { UserDefaults.standard.set(textStyle, forKey: "textStyle") }
+    }
+
+    /// プロンプトモード（"preset" / "custom"）。
+    /// 既存ユーザーが編集した systemPrompt を温存するため初期値は "custom"。
+    @Published var promptMode: String {
+        didSet { UserDefaults.standard.set(promptMode, forKey: "promptMode") }
+    }
+
     @Published var dictionary: [DictionaryEntry] {
         didSet {
             if let encoded = try? JSONEncoder().encode(dictionary) {
@@ -209,7 +231,11 @@ class SettingsManager: ObservableObject {
             UserDefaults.standard.string(forKey: "rightOptionMode") ??
             ShortcutTriggerMode.disabled.rawValue
         self.systemPrompt = UserDefaults.standard.string(forKey: "systemPrompt") ?? "以下の文字起こしテキストを、自然な日本語に修正してください。不要なフィラーは削除し、文脈を整えてください。"
-        
+        self.whisperLanguage = UserDefaults.standard.string(forKey: "whisperLanguage") ?? "ja"
+        self.formatterLanguage = UserDefaults.standard.string(forKey: "formatterLanguage") ?? "ja"
+        self.textStyle = UserDefaults.standard.string(forKey: "textStyle") ?? "auto"
+        self.promptMode = UserDefaults.standard.string(forKey: "promptMode") ?? "custom"
+
         if let data = UserDefaults.standard.data(forKey: "userDictionary"),
            let decoded = try? JSONDecoder().decode([DictionaryEntry].self, from: data) {
             self.dictionary = decoded
@@ -289,5 +315,110 @@ class SettingsManager: ObservableObject {
     
     func removeEntry(at offsets: IndexSet) {
         dictionary.remove(atOffsets: offsets)
+    }
+
+    /// 言語 × 文体 × プロバイダーの組み合わせから整形 AI 用 systemPrompt を組み立てる。
+    ///
+    /// - Parameters:
+    ///   - language: "ja" / "en"。それ以外は ja として扱う。
+    ///   - style: "desuMasu" / "daDearu" / "auto"。英語の場合は無視。
+    ///   - provider: Bonsai は context window 配慮で軽量版（few-shot 1 例 / 簡素な記述）、
+    ///               Groq・OpenAI は詳細版（few-shot 2 例 / 5 層構造）を返す。
+    /// - Returns: system role に渡せる完成済みプロンプト文字列。
+    func systemPromptForLanguageAndStyle(
+        language: String,
+        style: String,
+        provider: FormatterProvider
+    ) -> String {
+        let normalizedLanguage = language == "en" ? "en" : "ja"
+        let isLightweight = (provider == .bonsai)
+
+        switch (normalizedLanguage, isLightweight) {
+        case ("ja", true):
+            return japaneseBonsaiPrompt(style: style)
+        case ("ja", false):
+            return japaneseDetailedPrompt(style: style)
+        case ("en", true):
+            return englishBonsaiPrompt()
+        case ("en", false):
+            return englishDetailedPrompt()
+        default:
+            return japaneseDetailedPrompt(style: style)
+        }
+    }
+
+    private func japaneseStyleInstruction(_ style: String) -> String {
+        switch style {
+        case "desuMasu":
+            return "ですます調で統一する"
+        case "daDearu":
+            return "だ・である調で統一する"
+        default:
+            return "入力の文体に合わせる"
+        }
+    }
+
+    private func japaneseBonsaiPrompt(style: String) -> String {
+        let styleLine = japaneseStyleInstruction(style)
+        return """
+        音声入力テキストの整形:
+        - 誤字訂正、フィラー除去、言い直し統合
+        - 文体: \(styleLine)
+        - 出力: 整形後テキストのみ。前置き禁止
+        """
+    }
+
+    private func japaneseDetailedPrompt(style: String) -> String {
+        let styleLine = japaneseStyleInstruction(style)
+        return """
+        あなたは音声入力で得られたテキストを整形する編集者です。
+
+        入力は Whisper による音声認識結果で、誤字・フィラー・言い直しを含む可能性があります。
+        以下の整形ルールに従って、自然な文章に整形してください:
+
+        - 同音異義語の誤字は文脈で訂正する
+        - 「えーと」「あの」「まあ」等のフィラーを除去する
+        - 「あ、違う」「いや」等の自己訂正を取り込んで最終形にする
+        - 不要な句読点・記号を整理する
+        - 文体: \(styleLine)
+
+        出力は整形後のテキストのみを返してください。前置き、説明、マークダウン記法は禁止です。
+
+        例:
+        入力: えーと、明日の会議はあの、3時から、いや、4時からでお願いします。
+        出力: 明日の会議は4時からでお願いします。
+
+        入力: ご指摘の通り、修正版をお送りします。あ、違う、最新版でした。
+        出力: ご指摘の通り、最新版をお送りします。
+        """
+    }
+
+    private func englishBonsaiPrompt() -> String {
+        return """
+        Refine voice-to-text:
+        - Fix typos, remove fillers, integrate corrections
+        - Output: refined text only. No preamble.
+        """
+    }
+
+    private func englishDetailedPrompt() -> String {
+        return """
+        You are an editor refining voice-to-text output.
+
+        Input is Whisper transcription with potential typos, fillers, and self-corrections.
+        Apply the following rules:
+
+        - Correct homophone errors using context
+        - Remove fillers ("um", "uh", "like", etc.)
+        - Integrate self-corrections to final form
+        - Clean up unnecessary punctuation
+        - Style: Match input style
+
+        Return only the refined text. No preamble, no explanation, no markdown.
+
+        Example:
+        Input: Um, the meeting is at, like, 3, no, 4 o'clock tomorrow.
+        Output: The meeting is at 4 o'clock tomorrow.
+        """
     }
 }
