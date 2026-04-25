@@ -57,7 +57,7 @@ struct TypeToTalkMainView: View {
                             .tint(.white)
                             .scaleEffect(1.2)
                     } else {
-                        Image(systemName: coordinator.recorder.isRecording ? "stop.fill" : "mic.fill")
+                        Image(systemName: "mic.fill")
                             .font(.system(size: 30, weight: .semibold))
                             .foregroundStyle(.white)
                     }
@@ -112,7 +112,7 @@ struct TypeToTalkMainView: View {
 
     private var micButtonColor: Color {
         if coordinator.recorder.isRecording {
-            return .red
+            return Color(red: 0.05, green: 0.35, blue: 0.80)
         }
 
         if coordinator.whisper.whisperKit != nil {

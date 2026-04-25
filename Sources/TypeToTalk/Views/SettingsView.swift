@@ -266,7 +266,7 @@ struct SettingsView: View {
                                 Circle()
                                     .fill(accessibility.hasPermission ? Color.green : Color.red)
                                     .frame(width: 8, height: 8)
-                                Text(accessibility.hasPermission ? "許可済み" : "未許可")
+                                Text(accessibility.hasPermission ? "許可済" : "未許可")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
