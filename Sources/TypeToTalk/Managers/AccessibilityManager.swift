@@ -114,7 +114,11 @@ class AccessibilityManager: ObservableObject {
             return .noFocusedElement
         }
 
-        if AXUIElementSetAttributeValue(element, kAXValueAttribute as CFString, text as CFTypeRef) == .success {
+        // kAXSelectedTextAttribute を set すると、現在の選択範囲を新規テキストで置換する
+        // （選択範囲が0文字＝カーソル位置だけなら挿入）。
+        // kAXValueAttribute だとフィールド全体が上書きされ、CotEditor 等の本格テキストエディタで
+        // 既存ドキュメントが破壊される。
+        if AXUIElementSetAttributeValue(element, kAXSelectedTextAttribute as CFString, text as CFTypeRef) == .success {
             return .success
         }
 
