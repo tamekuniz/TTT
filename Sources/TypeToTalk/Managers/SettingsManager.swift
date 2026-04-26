@@ -213,6 +213,12 @@ class SettingsManager: ObservableObject {
         didSet { UserDefaults.standard.set(soundFeedbackEnabled, forKey: "soundFeedbackEnabled") }
     }
 
+    /// 録音中・処理中の視覚フィードバック HUD ON/OFF。デフォルト ON（true）。
+    /// OFF 時は HUD パネル（画面下中央）が一切表示されない。
+    @Published var visualFeedbackEnabled: Bool {
+        didSet { UserDefaults.standard.set(visualFeedbackEnabled, forKey: "visualFeedbackEnabled") }
+    }
+
     @Published var dictionary: [DictionaryEntry] {
         didSet {
             if let encoded = try? JSONEncoder().encode(dictionary) {
@@ -248,6 +254,13 @@ class SettingsManager: ObservableObject {
             self.soundFeedbackEnabled = UserDefaults.standard.bool(forKey: "soundFeedbackEnabled")
         } else {
             self.soundFeedbackEnabled = true
+        }
+
+        // visualFeedbackEnabled: 未設定時は true（デフォルト ON）
+        if UserDefaults.standard.object(forKey: "visualFeedbackEnabled") != nil {
+            self.visualFeedbackEnabled = UserDefaults.standard.bool(forKey: "visualFeedbackEnabled")
+        } else {
+            self.visualFeedbackEnabled = true
         }
 
         if let data = UserDefaults.standard.data(forKey: "userDictionary"),

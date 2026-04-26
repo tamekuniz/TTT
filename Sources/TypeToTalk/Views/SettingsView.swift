@@ -251,7 +251,13 @@ struct SettingsView: View {
                                 .toggleStyle(.switch)
                         }
 
-                        Text("任意のショートカットに加えて、右 Option 単体でも録音を制御できます。トグルは押すたび開始/停止、プッシュトークは押している間だけ録音します。フィードバック音 ON で録音開始時に Tink、停止時に Pop が鳴ります（触覚フィードバックは常時有効）。")
+                        settingRow("視覚フィードバック") {
+                            Toggle("", isOn: $settings.visualFeedbackEnabled)
+                                .labelsHidden()
+                                .toggleStyle(.switch)
+                        }
+
+                        Text("任意のショートカットに加えて、右 Option 単体でも録音を制御できます。トグルは押すたび開始/停止、プッシュトークは押している間だけ録音します。フィードバック音 ON で録音開始時に Tink、停止時に Pop が鳴ります（触覚フィードバックは常時有効）。視覚フィードバック ON で録音中・処理中に画面下中央へ HUD パネルを表示します。")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }

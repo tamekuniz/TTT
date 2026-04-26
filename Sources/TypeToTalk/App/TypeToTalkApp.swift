@@ -47,6 +47,13 @@ class TypeToTalkCoordinator: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private let logger = Logger(subsystem: "com.tamekuniz.TypeToTalk", category: "Coordinator")
 
+    /// 録音中・処理中に表示する HUD パネルのコントローラ。
+    /// init の最後に AppStatus 連動のためインスタンス化する。
+    private var hudController: HUDPanelController?
+
+    /// idle 遷移時の遅延 hide 用 Task。次の status 変化で必ず cancel する。
+    private var hudHideTask: Task<Void, Never>?
+
     init() {
         let settings = SettingsManager()
         self.settings = settings
@@ -69,6 +76,11 @@ class TypeToTalkCoordinator: ObservableObject {
 
         // 依存元の現在値で初期表示を確定する
         refreshFormatterStatusText()
+
+        // HUD 初期化 + AppStatus 連動の購読開始
+        // self を参照するため init の最後で実行する（self が完全初期化済みである必要があるため）
+        self.hudController = HUDPanelController(coordinator: self)
+        setupHUDBindings()
     }
 
     /// formatterStatusText を活性 provider と依存元の状態から計算して @Published に反映する。
@@ -111,6 +123,45 @@ class TypeToTalkCoordinator: ObservableObject {
         settings.$bonsaiCustomModelID
             .sink { [weak self] _ in self?.refreshFormatterStatusText() }
             .store(in: &cancellables)
+    }
+
+    /// AppStatus の変化を購読して HUD パネルの表示・非表示を駆動する。
+    /// `setupFormatterStatusBindings` と同パターンで Combine sink を使う。
+    /// idle 遷移時は 2 秒の遅延を入れてから hide する（録音終了→次状態への素早い再入時の点滅を抑える）。
+    private func setupHUDBindings() {
+        $currentStatus
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] status in
+                self?.handleHUDForStatus(status)
+            }
+            .store(in: &cancellables)
+    }
+
+    /// AppStatus 値ごとに HUD の表示・非表示を切替える。
+    /// - .recording / .processing / .error → 即時 show（visualFeedbackEnabled が ON のときのみ）
+    /// - .idle → 2 秒後に hide（直前の hideTask は必ず cancel する）
+    /// visualFeedbackEnabled が OFF のときは show を抑止し、念のため hide する。
+    private func handleHUDForStatus(_ status: AppStatus) {
+        // 既存の遅延 hide はどの遷移でも一旦キャンセル（点滅・古いタイマーでの誤 hide を防ぐ）
+        hudHideTask?.cancel()
+        hudHideTask = nil
+
+        guard settings.visualFeedbackEnabled else {
+            hudController?.hide()
+            return
+        }
+
+        switch status {
+        case .recording, .processing, .error:
+            hudController?.show()
+        case .idle:
+            // idle 遷移後 2 秒で hide。途中で別 status が来たら hideTask は cancel される
+            hudHideTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                if Task.isCancelled { return }
+                self?.hudController?.hide()
+            }
+        }
     }
 
     func handleAppLaunch() {
