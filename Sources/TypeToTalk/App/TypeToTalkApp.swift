@@ -167,8 +167,18 @@ class TypeToTalkCoordinator: ObservableObject {
     func handleAppLaunch() {
         startupLoadTask?.cancel()
         startupLoadTask = Task { @MainActor [weak self] in
-            await self?.synchronizeModelsForCurrentSettings()
-            self?.currentStatus = .idle
+            guard let self else { return }
+            await self.synchronizeModelsForCurrentSettings()
+            self.currentStatus = .idle
+
+            // 起動時に最新の権限状態を取り直してから判定する。
+            // AXIsProcessTrusted() のプロセス内キャッシュ問題があるが、
+            // 「起動直後 = キャッシュが新しいプロセスのもの」になるため
+            // ここで false なら本当に未許可という判断ができる。
+            self.accessibility.refreshPermissionStatus()
+            if !self.accessibility.hasPermission {
+                self.showAccessibilityPermissionAlert = true
+            }
         }
     }
 
@@ -507,6 +517,24 @@ struct MenuBarLabel: View {
                 if newPhase == .active {
                     coordinator.accessibility.refreshPermissionStatus()
                 }
+            }
+            // 起動時のアクセシビリティ権限誘導アラート。
+            // 不確か: accessory アプリ（Dock 非表示）かつ MenuBarExtra label の Image 上で
+            // SwiftUI .alert() が実際に modal 表示されるかは実機検証が必要。
+            // 表示されない場合は次サイクルで NSAlert / 専用 NSWindow へ切替検討。
+            .alert(
+                "アクセシビリティ権限が必要です",
+                isPresented: $coordinator.showAccessibilityPermissionAlert
+            ) {
+                Button("システム設定を開く") {
+                    coordinator.accessibility.openAccessibilitySettings()
+                    coordinator.accessibility.startPermissionPolling { [weak coordinator] in
+                        coordinator?.restartApp()
+                    }
+                }
+                Button("あとで", role: .cancel) {}
+            } message: {
+                Text("TypeToTalk が文字起こし結果をフォーカス中の入力欄に書き込むには、アクセシビリティ権限が必要です。\n\n「システム設定を開く」を押すと、権限を ON にした瞬間に自動でアプリが再起動して反映されます。")
             }
     }
 }
