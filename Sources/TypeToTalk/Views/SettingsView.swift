@@ -194,6 +194,7 @@ struct SettingsView: View {
                         settingRow("プロンプトモード") {
                             Picker("プロンプトモード", selection: $settings.promptMode) {
                                 Text("プリセット").tag("preset")
+                                Text("そのまま").tag("asIs")
                                 Text("カスタム").tag("custom")
                             }
                             .pickerStyle(.segmented)
@@ -213,6 +214,10 @@ struct SettingsView: View {
                                             .stroke(Color.secondary.opacity(0.2))
                                     )
                             }
+                        } else if settings.promptMode == "asIs" {
+                            Text("「そのまま」モードでは、フィラー（えーと・あの 等）と明示的な自己訂正・誤字だけを修正し、文体・語順・言い回しには触れません。文体設定は無視されます。")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                         } else {
                             Text("プリセット時は、整形言語と文体から最適なプロンプトを自動生成します（Bonsai は軽量版、Groq / OpenAI は few-shot 込みの詳細版）。")
                                 .font(.caption)

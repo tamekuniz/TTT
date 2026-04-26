@@ -204,4 +204,70 @@ final class ModelSelectionTests: XCTestCase {
         XCTAssertTrue(prompt.contains("Whisper"), "Whisper 由来であることが明記されていない")
         XCTAssertFalse(prompt.contains("ですます"), "英語プロンプトに日本語の文体指示が混入している")
     }
+
+    // MARK: - asIs (なるべくそのまま) モード
+
+    /// asIs 詳細版（ja × Groq）プロンプトには、フィラー・自己訂正の指示と
+    /// 「文体・語順・言い回しは触らない」旨の禁則、few-shot 例が含まれる。
+    func testSettingsManagerSystemPromptForAsIsJapaneseGroq() {
+        let settings = SettingsManager()
+
+        let prompt = settings.systemPromptForAsIs(language: "ja", provider: .groq)
+
+        XCTAssertTrue(prompt.contains("フィラー"), "フィラー除去ルールが含まれていない")
+        XCTAssertTrue(prompt.contains("自己訂正"), "明示的な自己訂正の指示が含まれていない")
+        XCTAssertTrue(prompt.contains("文体"), "文体に関する禁則が含まれていない")
+        XCTAssertTrue(prompt.contains("入力:"), "few-shot 例の入力ラベルが含まれていない")
+        XCTAssertTrue(prompt.contains("出力:"), "few-shot 例の出力ラベルが含まれていない")
+    }
+
+    /// asIs Bonsai 軽量版（ja）プロンプトは Groq 詳細版より短く、
+    /// フィラー・自己訂正キーワードを含む。
+    func testSettingsManagerSystemPromptForAsIsJapaneseBonsai() {
+        let settings = SettingsManager()
+
+        let bonsaiPrompt = settings.systemPromptForAsIs(language: "ja", provider: .bonsai)
+        let groqPrompt = settings.systemPromptForAsIs(language: "ja", provider: .groq)
+
+        XCTAssertLessThan(
+            bonsaiPrompt.count,
+            groqPrompt.count,
+            "asIs Bonsai 軽量版が Groq 詳細版より短くなっていない（context window 配慮を満たさない）"
+        )
+        XCTAssertTrue(bonsaiPrompt.contains("フィラー"), "asIs Bonsai 版にフィラー指示が含まれていない")
+        XCTAssertTrue(bonsaiPrompt.contains("自己訂正") || bonsaiPrompt.contains("言い直"),
+                      "asIs Bonsai 版に自己訂正指示が含まれていない")
+    }
+
+    /// asIs 英語プロンプトには英語のキーワードが含まれ、日本語キーワードは含まれない。
+    func testSettingsManagerSystemPromptForAsIsEnglish() {
+        let settings = SettingsManager()
+
+        let prompt = settings.systemPromptForAsIs(language: "en", provider: .openAI)
+        let lowered = prompt.lowercased()
+
+        XCTAssertTrue(lowered.contains("filler"), "asIs 英語プロンプトに filler 指示が含まれていない")
+        XCTAssertTrue(lowered.contains("self-correction") || lowered.contains("correct"),
+                      "asIs 英語プロンプトに self-correction 指示が含まれていない")
+        XCTAssertTrue(lowered.contains("do not") || lowered.contains("do n't"),
+                      "asIs 英語プロンプトに禁則指示（do not）が含まれていない")
+        XCTAssertFalse(prompt.contains("ですます"), "asIs 英語プロンプトに日本語の文体指示が混入している")
+        XCTAssertFalse(prompt.contains("フィラー"), "asIs 英語プロンプトに日本語キーワードが混入している")
+    }
+
+    /// asIs モードは textStyle を引数として取らないため、
+    /// 文体指示文（「ですます調で統一する」「だ・である調で統一する」）が
+    /// プロンプトに混入することはない。
+    func testSettingsManagerSystemPromptForAsIsOmitsStyleInstruction() {
+        let settings = SettingsManager()
+
+        // 文体設定が何であっても asIs プロンプトに文体強制指示は含まれない
+        for provider in FormatterProvider.allCases {
+            let prompt = settings.systemPromptForAsIs(language: "ja", provider: provider)
+            XCTAssertFalse(prompt.contains("ですます調で統一"),
+                           "asIs プロンプトに ですます調 強制指示が混入 (provider=\(provider.rawValue))")
+            XCTAssertFalse(prompt.contains("だ・である調で統一"),
+                           "asIs プロンプトに だ・である調 強制指示が混入 (provider=\(provider.rawValue))")
+        }
+    }
 }

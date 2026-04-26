@@ -409,13 +409,19 @@ class TypeToTalkCoordinator: ObservableObject {
 
     private func processText(_ text: String, with provider: FormatterProvider) async -> String {
         let prompt: String
-        if settings.promptMode == "preset" {
+        switch settings.promptMode {
+        case "preset":
             prompt = settings.systemPromptForLanguageAndStyle(
                 language: settings.formatterLanguage,
                 style: settings.textStyle,
                 provider: provider
             )
-        } else {
+        case "asIs":
+            prompt = settings.systemPromptForAsIs(
+                language: settings.formatterLanguage,
+                provider: provider
+            )
+        default:
             prompt = settings.systemPrompt
         }
 
