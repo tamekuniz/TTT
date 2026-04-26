@@ -13,6 +13,7 @@ import SwiftUI
 @MainActor
 final class HUDPanelController: NSWindowController {
     private weak var coordinator: TypeToTalkCoordinator?
+    private var hasPositioned = false
 
     init(coordinator: TypeToTalkCoordinator) {
         self.coordinator = coordinator
@@ -46,10 +47,13 @@ final class HUDPanelController: NSWindowController {
         fatalError("init(coder:) has not been implemented")
     }
 
-    /// HUD を表示する。位置を画面下中央 (Dock 上 40px) に再計算してから前面化する。
+    /// HUD を表示する。初回のみ画面下中央 (Dock 上 40px) に配置し、以降は直前の位置を保持する。
     func show() {
         guard let panel = window as? NSPanel else { return }
-        positionAtBottomCenter(panel: panel)
+        if !hasPositioned {
+            positionAtBottomCenter(panel: panel)
+            hasPositioned = true
+        }
         // フォーカスを奪わずに前面化する（makeKeyAndOrderFront は使わない）
         panel.orderFrontRegardless()
     }
