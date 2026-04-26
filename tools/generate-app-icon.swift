@@ -37,9 +37,9 @@ struct TPlacement {
 }
 
 let placements: [TPlacement] = [
-    TPlacement(offset: CGPoint(x: -180, y:  180), alpha: 0.70),  // back (lower-left visually -> drawn first)
-    TPlacement(offset: CGPoint(x:    0, y:    0), alpha: 0.85),  // middle
-    TPlacement(offset: CGPoint(x:  180, y: -180), alpha: 1.00),  // front (upper-right visually -> drawn last)
+    TPlacement(offset: CGPoint(x: -180, y:  180), alpha: 1.0),  // back (lower-left visually -> drawn first)
+    TPlacement(offset: CGPoint(x:    0, y:    0), alpha: 1.0),  // middle
+    TPlacement(offset: CGPoint(x:  180, y: -180), alpha: 1.0),  // front (upper-right visually -> drawn last)
 ]
 
 // Note about coordinates:
