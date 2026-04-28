@@ -5,7 +5,8 @@ import KeyboardShortcuts
 import os
 
 extension KeyboardShortcuts.Name {
-    static let triggerRecording = Self("triggerRecording")
+    static let triggerModeA = Self("triggerModeA")
+    static let triggerModeB = Self("triggerModeB")
 }
 
 @MainActor
@@ -41,6 +42,7 @@ class TypeToTalkCoordinator: ObservableObject {
 
     private var isTriggerShortcutPressed = false
     private var isRightOptionPressed = false
+    private var activeRecordingMode: RecordingMode = .modeA
     private var startupLoadTask: Task<Void, Never>?
     private var globalFlagsMonitor: Any?
     private var localFlagsMonitor: Any?
@@ -62,13 +64,23 @@ class TypeToTalkCoordinator: ObservableObject {
         setupRightOptionMonitor()
         setupFormatterStatusBindings()
 
-        KeyboardShortcuts.onKeyDown(for: .triggerRecording) { [weak self] in
+        KeyboardShortcuts.onKeyDown(for: .triggerModeA) { [weak self] in
             Task { @MainActor in
-                await self?.handleTriggerShortcutDown()
+                await self?.handleModeShortcutDown(.modeA)
+            }
+        }
+        KeyboardShortcuts.onKeyUp(for: .triggerModeA) { [weak self] in
+            Task { @MainActor in
+                await self?.handleTriggerShortcutUp()
             }
         }
 
-        KeyboardShortcuts.onKeyUp(for: .triggerRecording) { [weak self] in
+        KeyboardShortcuts.onKeyDown(for: .triggerModeB) { [weak self] in
+            Task { @MainActor in
+                await self?.handleModeShortcutDown(.modeB)
+            }
+        }
+        KeyboardShortcuts.onKeyUp(for: .triggerModeB) { [weak self] in
             Task { @MainActor in
                 await self?.handleTriggerShortcutUp()
             }
@@ -227,7 +239,7 @@ class TypeToTalkCoordinator: ObservableObject {
             // 3. AI による成形 (コンテキストは最小限)
             let activeFormatter = activeFormatterProvider
             statusMessage = "AI成形中 (\(activeFormatterDisplayName))..."
-            let processedText = await processText(rawText, with: activeFormatter)
+            let processedText = await processText(rawText, with: activeFormatter, mode: activeRecordingMode)
 
             // 4. AI 成形後の「事後置換」
             // 万が一 AI が読みを復活させたり誤変換した場合に備えて、もう一度強制修正
@@ -269,9 +281,10 @@ class TypeToTalkCoordinator: ObservableObject {
         }
     }
 
-    private func handleTriggerShortcutDown() async {
+    private func handleModeShortcutDown(_ mode: RecordingMode) async {
         guard !isTriggerShortcutPressed else { return }
         isTriggerShortcutPressed = true
+        activeRecordingMode = mode
         recordTriggerFeedback(source: "グローバル")
 
         switch settings.shortcutTriggerMode {
@@ -314,14 +327,16 @@ class TypeToTalkCoordinator: ObservableObject {
     private func handleFlagsChanged(_ event: NSEvent) async {
         guard event.keyCode == 61 else { return }
 
-        let isPressed = event.modifierFlags.contains(.option)
+        let flags = event.modifierFlags
+        let isPressed = flags.contains(.option)
         guard isPressed != isRightOptionPressed else { return }
 
         isRightOptionPressed = isPressed
 
         if isPressed {
-            recordTriggerFeedback(source: "右Option")
-            await handleTriggerShortcutDown()
+            let mode: RecordingMode = flags.contains(.shift) ? .modeB : .modeA
+            recordTriggerFeedback(source: mode == .modeB ? "Shift+右Option (モードB)" : "右Option (モードA)")
+            await handleModeShortcutDown(mode)
         } else {
             await handleTriggerShortcutUp()
         }
@@ -407,22 +422,27 @@ class TypeToTalkCoordinator: ObservableObject {
         refreshFormatterStatusText()
     }
 
-    private func processText(_ text: String, with provider: FormatterProvider) async -> String {
+    private func processText(_ text: String, with provider: FormatterProvider, mode: RecordingMode = .modeA) async -> String {
         let prompt: String
-        switch settings.promptMode {
-        case "preset":
-            prompt = settings.systemPromptForLanguageAndStyle(
-                language: settings.formatterLanguage,
-                style: settings.textStyle,
-                provider: provider
-            )
-        case "asIs":
-            prompt = settings.systemPromptForAsIs(
-                language: settings.formatterLanguage,
-                provider: provider
-            )
-        default:
-            prompt = settings.systemPrompt
+        switch mode {
+        case .modeB:
+            prompt = settings.systemPromptForTranslation(provider: provider)
+        case .modeA:
+            switch settings.promptMode {
+            case "preset":
+                prompt = settings.systemPromptForLanguageAndStyle(
+                    language: settings.formatterLanguage,
+                    style: settings.textStyle,
+                    provider: provider
+                )
+            case "asIs":
+                prompt = settings.systemPromptForAsIs(
+                    language: settings.formatterLanguage,
+                    provider: provider
+                )
+            default:
+                prompt = settings.systemPrompt
+            }
         }
 
         switch provider {

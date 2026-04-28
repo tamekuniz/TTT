@@ -120,9 +120,9 @@ enum ShortcutTriggerMode: String, CaseIterable, Identifiable {
     case disabled
     case toggle
     case pushToTalk
-    
+
     var id: String { rawValue }
-    
+
     var displayName: String {
         switch self {
         case .disabled:
@@ -133,6 +133,11 @@ enum ShortcutTriggerMode: String, CaseIterable, Identifiable {
             return "プッシュトーク"
         }
     }
+}
+
+enum RecordingMode: Sendable {
+    case modeA  // 標準整形
+    case modeB  // 翻訳
 }
 
 @MainActor
@@ -554,6 +559,52 @@ class SettingsManager: ObservableObject {
 
         Input: So I think we should, you know, scratch that, we will ship on Friday.
         Output: We will ship on Friday.
+        """
+    }
+
+    /// モードB（翻訳）用 systemPrompt。
+    ///
+    /// Whisper の文字起こし結果をフィラー除去 → 翻訳 → 自然な英語の順で処理する。
+    /// whisperLanguage 設定はそのまま使われるため言語パラメータは不要。
+    func systemPromptForTranslation(provider: FormatterProvider) -> String {
+        let isLightweight = (provider == .bonsai)
+        return isLightweight ? translationBonsaiPrompt() : translationDetailedPrompt()
+    }
+
+    private func translationBonsaiPrompt() -> String {
+        return """
+        Voice transcription translation:
+        - Remove fillers (えー/あー/まあ/あの/えっと/um/uh/like)
+        - Translate to natural English
+        - Output: translated text only. No preamble.
+
+        Example:
+        Input: えーと、明日の会議は4時からでお願いします。
+        Output: The meeting tomorrow is at 4 o'clock.
+        """
+    }
+
+    private func translationDetailedPrompt() -> String {
+        return """
+        You are a voice-to-text translator.
+
+        Input is Whisper transcription that may contain fillers, self-corrections, and recognition errors.
+        Apply the following steps in order:
+
+        1. Remove fillers: Delete meaningless fillers in any language \
+        (「えーと」「あー」「まあ」「あの」/ "um", "uh", "like", "you know")
+        2. Apply explicit self-corrections: When the speaker corrects themselves, keep only the correction
+        3. Translate to natural, fluent English: Preserve the speaker's intent and register; \
+        do not add content not in the original
+
+        Return only the translated English text. No preamble, no explanation, no markdown.
+
+        Example:
+        Input: えーと、明日の会議は4時からでお願いします。
+        Output: The meeting tomorrow is at 4 o'clock.
+
+        Input: この機能は、あの、まだ実装中です。いや、もう完成しています。
+        Output: This feature is already complete.
         """
     }
 }

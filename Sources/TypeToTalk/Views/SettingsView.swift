@@ -213,6 +213,9 @@ struct SettingsView: View {
                                         RoundedRectangle(cornerRadius: 8)
                                             .stroke(Color.secondary.opacity(0.2))
                                     )
+                                Text("モードBでは翻訳専用プロンプトが固定で適用され、カスタムプロンプトは使用されません。")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
                             }
                         } else if settings.promptMode == "asIs" {
                             Text("「そのまま」モードでは、フィラー（えーと・あの 等）と明示的な自己訂正・誤字だけを修正し、文体・語順・言い回しには触れません。文体設定は無視されます。")
@@ -237,8 +240,12 @@ struct SettingsView: View {
                 
                 GroupBox {
                     VStack(alignment: .leading, spacing: 12) {
-                        settingRow("ショートカット") {
-                            KeyboardShortcuts.Recorder(for: .triggerRecording)
+                        settingRow("モードA") {
+                            KeyboardShortcuts.Recorder(for: .triggerModeA)
+                        }
+
+                        settingRow("モードB") {
+                            KeyboardShortcuts.Recorder(for: .triggerModeB)
                         }
 
                         settingRow("動作") {
@@ -262,7 +269,7 @@ struct SettingsView: View {
                                 .toggleStyle(.switch)
                         }
 
-                        Text("任意のショートカットに加えて、右 Option 単体でも録音を制御できます。トグルは押すたび開始/停止、プッシュトークは押している間だけ録音します。フィードバック音 ON で録音開始時に Tink、停止時に Pop が鳴ります（触覚フィードバックは常時有効）。視覚フィードバック ON で録音中・処理中に画面下中央へ HUD パネルを表示します。")
+                        Text("モードA（右Option / モードAショートカット）: 標準整形。モードB（Shift+右Option / モードBショートカット）: Whisper 文字起こし後に AI が翻訳して注入。トグルは押すたび開始/停止、プッシュトークは押している間だけ録音します。フィードバック音 ON で録音開始時に Tink、停止時に Pop が鳴ります（触覚フィードバックは常時有効）。視覚フィードバック ON で録音中・処理中に画面下中央へ HUD パネルを表示します。")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
