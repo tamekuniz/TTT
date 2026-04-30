@@ -4,6 +4,7 @@ import KeyboardShortcuts
 struct SettingsView: View {
     @ObservedObject var settings: SettingsManager
     @ObservedObject var whisper: WhisperManager
+    @ObservedObject var scribe: ScribeManager
     @ObservedObject var bonsai: BonsaiManager
     @ObservedObject var accessibility: AccessibilityManager
     @ObservedObject var coordinator: TypeToTalkCoordinator
@@ -57,38 +58,60 @@ struct SettingsView: View {
                             }
                             .labelsHidden()
                         }
-                        
-                        settingRow("聞き取りモデル") {
-                            Picker("聞き取りモデル", selection: $settings.whisperModelPresetRawValue) {
-                                ForEach(WhisperModelPreset.allCases) { preset in
-                                    Text(preset.displayName).tag(preset.rawValue)
+
+                        switch settings.transcriptionProvider {
+                        case .whisperKit:
+                            settingRow("聞き取りモデル") {
+                                Picker("聞き取りモデル", selection: $settings.whisperModelPresetRawValue) {
+                                    ForEach(WhisperModelPreset.allCases) { preset in
+                                        Text(preset.displayName).tag(preset.rawValue)
+                                    }
+                                }
+                                .labelsHidden()
+                            }
+
+                            if settings.whisperModelPreset == .custom {
+                                settingRow("モデルID") {
+                                    TextField("Whisper モデル ID", text: $settings.whisperCustomModelID)
+                                        .textFieldStyle(.roundedBorder)
                                 }
                             }
-                            .labelsHidden()
-                        }
-                        
-                        if settings.whisperModelPreset == .custom {
-                            settingRow("モデルID") {
-                                TextField("Whisper モデル ID", text: $settings.whisperCustomModelID)
+
+                            loadStatusBlock(
+                                status: whisper.statusText,
+                                loadedModel: whisper.loadedModelDisplayName,
+                                selectedModel: whisper.needsExplicitLoad ? whisper.selectedModelDisplayName : nil,
+                                buttonTitle: whisper.isLoadingModel ? "再読込中..." : "再読込",
+                                isDisabled: whisper.isLoadingModel || !whisper.needsExplicitLoad
+                            ) {
+                                Task {
+                                    await whisper.loadSelectedModel()
+                                }
+                            }
+
+                            Text("選択した Whisper モデルをローカルにダウンロードして使います。`推奨モデル` はこの Mac に合う既定の variant を自動選択します。")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+
+                        case .elevenLabsScribe:
+                            settingRow("APIキー") {
+                                SecureField("ElevenLabs API キー", text: $settings.elevenLabsApiKey)
                                     .textFieldStyle(.roundedBorder)
                             }
-                        }
-                        
-                        loadStatusBlock(
-                            status: whisper.statusText,
-                            loadedModel: whisper.loadedModelDisplayName,
-                            selectedModel: whisper.needsExplicitLoad ? whisper.selectedModelDisplayName : nil,
-                            buttonTitle: whisper.isLoadingModel ? "再読込中..." : "再読込",
-                            isDisabled: whisper.isLoadingModel || !whisper.needsExplicitLoad
-                        ) {
-                            Task {
-                                await whisper.loadSelectedModel()
+
+                            Text("状態: \(scribe.statusText)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("ElevenLabs Scribe v2 (Batch API) を利用します。録音した音声がクラウドに送信されます。")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Text("APIキーは [ElevenLabs API Keys](https://elevenlabs.io/app/settings/api-keys) から取得できます。")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
                             }
                         }
-                        
-                        Text("選択した Whisper モデルをローカルにダウンロードして使います。`推奨モデル` はこの Mac に合う既定の variant を自動選択します。")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 } label: {

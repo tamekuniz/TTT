@@ -2,13 +2,16 @@ import Foundation
 
 enum TranscriptionProvider: String, CaseIterable, Identifiable {
     case whisperKit
-    
+    case elevenLabsScribe
+
     var id: String { rawValue }
-    
+
     var displayName: String {
         switch self {
         case .whisperKit:
             return "WhisperKit (ローカル)"
+        case .elevenLabsScribe:
+            return "ElevenLabs Scribe (クラウド)"
         }
     }
 }
@@ -173,7 +176,11 @@ class SettingsManager: ObservableObject {
     @Published var openAIModel: String {
         didSet { UserDefaults.standard.set(openAIModel, forKey: "openAIModel") }
     }
-    
+
+    @Published var elevenLabsApiKey: String {
+        didSet { UserDefaults.standard.set(elevenLabsApiKey, forKey: "elevenLabsApiKey") }
+    }
+
     @Published var bonsaiModelPresetRawValue: String {
         didSet { UserDefaults.standard.set(bonsaiModelPresetRawValue, forKey: "bonsaiModelPreset") }
     }
@@ -241,6 +248,7 @@ class SettingsManager: ObservableObject {
         self.groqModel = UserDefaults.standard.string(forKey: "groqModel") ?? "llama3-8b-8192"
         self.openAIApiKey = UserDefaults.standard.string(forKey: "openAIApiKey") ?? ""
         self.openAIModel = UserDefaults.standard.string(forKey: "openAIModel") ?? "gpt-4o-mini"
+        self.elevenLabsApiKey = UserDefaults.standard.string(forKey: "elevenLabsApiKey") ?? ""
         self.bonsaiModelPresetRawValue = UserDefaults.standard.string(forKey: "bonsaiModelPreset") ?? BonsaiModelPreset.ternaryBonsai8B2bit.rawValue
         self.bonsaiCustomModelID = UserDefaults.standard.string(forKey: "bonsaiCustomModelID") ?? ""
         self.shortcutTriggerModeRawValue =
@@ -319,6 +327,13 @@ class SettingsManager: ObservableObject {
         }
         let trimmed = whisperCustomModelID.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+
+    /// 前後の空白を除いた ElevenLabs API キー。
+    /// `resolvedWhisperModelID` 等と同じ「resolved/trimmed 系 getter」慣習に揃え、
+    /// trim 式を呼出側に散らさない。空文字判定はこの値で `.isEmpty` を見れば済む。
+    var trimmedElevenLabsApiKey: String {
+        elevenLabsApiKey.trimmingCharacters(in: .whitespacesAndNewlines)
     }
     
     var whisperDisplayName: String {

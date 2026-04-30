@@ -23,6 +23,7 @@ class TypeToTalkCoordinator: ObservableObject {
 
     @Published var recorder = AudioRecorder()
     @Published var whisper: WhisperManager
+    @Published var scribe: ScribeManager
     @Published var formatter = OpenAICompatibleManager()
     @Published var bonsai = BonsaiManager()
     @Published var accessibility = AccessibilityManager()
@@ -60,6 +61,7 @@ class TypeToTalkCoordinator: ObservableObject {
         let settings = SettingsManager()
         self.settings = settings
         self.whisper = WhisperManager(settings: settings)
+        self.scribe = ScribeManager(settings: settings)
         self.bonsai.configureSelectedModel(settings.resolvedBonsaiModelID)
         setupRightOptionMonitor()
         setupFormatterStatusBindings()
@@ -210,18 +212,32 @@ class TypeToTalkCoordinator: ObservableObject {
                 return
             }
 
-            guard whisper.whisperKit != nil else {
-                statusMessage = "聞き取りモデルを読み込んでください"
-                isProcessing = false
-                currentStatus = .error("聞き取りモデル未読込")
-                return
+            // 1. STT エンジン分岐: WhisperKit (オンデバイス) / ElevenLabs Scribe (クラウド)
+            var rawText: String
+            switch settings.transcriptionProvider {
+            case .whisperKit:
+                guard whisper.whisperKit != nil else {
+                    statusMessage = "聞き取りモデルを読み込んでください"
+                    isProcessing = false
+                    currentStatus = .error("聞き取りモデル未読込")
+                    return
+                }
+                rawText = await whisper.transcribe(
+                    audioURL: audioURL,
+                    language: settings.whisperLanguage
+                )
+            case .elevenLabsScribe:
+                guard !settings.trimmedElevenLabsApiKey.isEmpty else {
+                    statusMessage = "ElevenLabs APIキーが設定されていません"
+                    isProcessing = false
+                    currentStatus = .error("APIキー未設定")
+                    return
+                }
+                rawText = await scribe.transcribe(
+                    audioURL: audioURL,
+                    language: settings.whisperLanguage
+                )
             }
-
-            // 1. Whisper による文字起こし (素の状態)
-            var rawText = await whisper.transcribe(
-                audioURL: audioURL,
-                language: settings.whisperLanguage
-            )
 
             guard !rawText.isEmpty else {
                 statusMessage = "文字起こし失敗"
@@ -632,6 +648,7 @@ struct TypeToTalkApp: App {
             SettingsView(
                 settings: coordinator.settings,
                 whisper: coordinator.whisper,
+                scribe: coordinator.scribe,
                 bonsai: coordinator.bonsai,
                 accessibility: coordinator.accessibility,
                 coordinator: coordinator

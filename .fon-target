@@ -1,0 +1,14 @@
+# フォN Step 8 ターゲット設定（KEY=VALUE 形式、bash source 可能）
+
+# バージョン更新対象ファイル
+VERSION_FILE_1_PATH=project.yml
+VERSION_FILE_1_KEY=CURRENT_PROJECT_VERSION
+
+# バージョン書式
+VERSION_FORMAT="YYYYMMDD + 連番アルファベット (A→B→...→Z→AA→AB)"
+VERSION_EXAMPLE="20260501A"
+
+# 検証方法
+DEPLOY_COMMAND="./scripts/build_app.sh"
+DEPLOY_TARGET="ローカル Mac"
+VERIFY_TYPE="ローカル起動確認"
